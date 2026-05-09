@@ -30,12 +30,18 @@ function parseConditions(raw) {
       if (isNaN(n) || n < 1) return `Número inválido em "${part}". Use: tentativas:N`;
       result.push({ type: 'attempts', value: n }); continue;
     }
-    if (part.startsWith('explodir:')) {
-      const n = parseInt(part.split(':')[1], 10);
-      if (isNaN(n)) return `Valor inválido em "${part}". Use: explodir:N`;
-      result.push({ type: 'explode', value: n }); continue;
+    if (part.startsWith('gatilho:')) {
+      const segments = part.split(':');
+      // gatilho:N:XdY  →  segments = ['gatilho', 'N', 'XdY']
+      const triggerValue = parseInt(segments[1], 10);
+      const triggerDice  = segments[2] ?? '';
+      if (isNaN(triggerValue))
+        return `Valor de gatilho inválido em "${part}". Use: gatilho:N:XdY (ex: gatilho:6:1d8)`;
+      if (!/^\d*d(?:f|\d+)([+-]\d+)?$/i.test(triggerDice))
+        return `Dado do gatilho inválido em "${part}". Use: gatilho:N:XdY (ex: gatilho:6:1d8)`;
+      result.push({ type: 'gatilho', value: triggerValue, dice: triggerDice }); continue;
     }
-    return `Condição não reconhecida: "${part}". Opções: min, max, minoumax, valor:N, tentativas:N, explodir:N`;
+    return `Condição não reconhecida: "${part}". Opções: min, max, minoumax, valor:N, tentativas:N, gatilho:N:XdY`;
   }
 
   if (result.length === 0) return 'Informe ao menos uma condição.';
@@ -49,7 +55,7 @@ function condLabel(cond) {
     minOrMax: 'para no mínimo OU máximo',
     value:    `para quando sair ${cond.value}`,
     attempts: `para após ${cond.value} tentativas`,
-    explode:  `explode ao sair ${cond.value} (rola dado extra)`,
+    gatilho:  `dispara ${cond.dice} ao sair ${cond.value}`,
   };
   return map[cond.type] ?? cond.type;
 }
@@ -67,7 +73,7 @@ const data = new SlashCommandBuilder()
     .setDescription('Cria ou atualiza uma tag de rolagem')
     .addStringOption(o => o.setName('nome').setDescription('Nome da tag').setRequired(true))
     .addStringOption(o => o.setName('condicoes')
-      .setDescription('ex: min, max, minoumax, valor:N, tentativas:N, explodir:N')
+      .setDescription('ex: min, max, minoumax, valor:N, tentativas:N, gatilho:N:XdY')
       .setRequired(true))
     .addStringOption(o => o.setName('exibicao').setDescription('Como exibir os resultados')
       .setRequired(true)

@@ -52,9 +52,10 @@ function executeTag(parsedBase, sides, tag, rerollFn) {
     let total = current.total;
     let extra = null;
 
-    const explodeCond = tag.stopConditions.find(c => c.type === 'explode');
-    if (explodeCond && rolls.some(v => v === explodeCond.value)) {
-      const extraRoll = rerollFn();
+    const gatilhoCond = tag.stopConditions.find(c => c.type === 'gatilho');
+    if (gatilhoCond && rolls.some(v => v === gatilhoCond.value)) {
+      const { parseSingleRoll } = require('./diceParser');
+      const extraRoll = parseSingleRoll(gatilhoCond.dice);
       if (extraRoll) {
         extra = extraRoll;
         total += extraRoll.total;
@@ -64,12 +65,12 @@ function executeTag(parsedBase, sides, tag, rerollFn) {
 
     attempts.push({ rolls, total, extra, attempt: i });
 
-    const stopCondsWithoutExplode = {
+    const stopCondsWithoutGatilho = {
       ...tag,
-      stopConditions: tag.stopConditions.filter(c => c.type !== 'explode'),
+      stopConditions: tag.stopConditions.filter(c => c.type !== 'gatilho'),
     };
-    if (stopCondsWithoutExplode.stopConditions.length > 0
-        && shouldStop(rolls, sides, stopCondsWithoutExplode, i)) {
+    if (stopCondsWithoutGatilho.stopConditions.length > 0
+        && shouldStop(rolls, sides, stopCondsWithoutGatilho, i)) {
       stopped   = true;
       stoppedAt = i;
       break;
@@ -120,7 +121,7 @@ function formatTagResult(parsed, tag, sides, rerollFn, freeText) {
     const isStop = stopped && i === (stoppedAt - 1);
 
     let line = `\`${i + 1}.\` ${rollsLabel(a.rolls, sides)}`;
-    if (a.extra) line += ` 💥 +${rollsLabel(a.extra.rolls, sides)}`;
+    if (a.extra) line += ` ⚡ ${a.extra.notation}→${rollsLabel(a.extra.rolls, a.extra.sides)}`;
     line += ` = **${a.total}**`;
     if (isBest) line += ' ⭐';
     if (isStop) line += ' 🛑';
