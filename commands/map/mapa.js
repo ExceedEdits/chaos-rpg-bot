@@ -114,6 +114,18 @@ const data = new SlashCommandBuilder()
       .setRequired(true)))
 
   .addSubcommand(s => s
+    .setName('coluna')
+    .setDescription('Preenche uma coluna inteira do mapa com emojis')
+    .addStringOption(o => o
+      .setName('letra')
+      .setDescription('Letra da coluna (ex: B)')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('tipos')
+      .setDescription('Emojis separados por vírgula, um por linha (ex: ⬜,🟩,🟫,⬜)')
+      .setRequired(true)))
+
+  .addSubcommand(s => s
     .setName('legenda')
     .setDescription('Adiciona ou atualiza uma entrada na legenda do mapa')
     .addStringOption(o => o
@@ -335,6 +347,31 @@ async function execute(interaction) {
       const updated = await editMapMessage(interaction, session, mapData);
       await sessionStore.save(guildId, updated);
       await interaction.editReply(`✅ Linha **${numero}** preenchida: ${tipos.join(' ')}`);
+      break;
+    }
+
+    case 'coluna': {
+      const letra = interaction.options.getString('letra').toUpperCase().trim();
+      const tipos = interaction.options.getString('tipos')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (!mapData.cols.includes(letra))
+        return interaction.editReply(`❌ Coluna \`${letra}\` não existe neste mapa (colunas: ${mapData.cols.join(', ')}).`);
+
+      if (tipos.length !== mapData.rows.length)
+        return interaction.editReply(
+          `❌ Esperava **${mapData.rows.length}** tipos (um por linha: ${mapData.rows.join(', ')}), recebi **${tipos.length}**.`
+        );
+
+      for (let i = 0; i < mapData.rows.length; i++)
+        mapData.grid[`${letra}${mapData.rows[i]}`] = tipos[i];
+
+      await mapStore.save(guildId, session.activeMap, mapData);
+      const updated = await editMapMessage(interaction, session, mapData);
+      await sessionStore.save(guildId, updated);
+      await interaction.editReply(`✅ Coluna **${letra}** preenchida: ${tipos.join(' ')}`);
       break;
     }
 
