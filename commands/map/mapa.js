@@ -1,6 +1,5 @@
 // ============================================================
 //  Chaos RPG Bot — /mapa
-//  Todos os subcomandos de controle do mapa (multi-guild)
 // ============================================================
 
 const { SlashCommandBuilder } = require('discord.js');
@@ -27,11 +26,22 @@ async function editMapMessage(interaction, session, mapData) {
   return session;
 }
 
+// ── Helper: gera letras de colunas (A, B, C ...) ─────────────
+function genCols(n) {
+  return Array.from({ length: n }, (_, i) => String.fromCharCode(65 + i));
+}
+
+// ── Helper: valida ID de mapa ─────────────────────────────────
+function validMapId(id) {
+  return /^[\w-]+$/.test(id);
+}
+
 // ── Definição do comando ──────────────────────────────────────
 const data = new SlashCommandBuilder()
   .setName('mapa')
   .setDescription('Controles do mapa de combate')
 
+  // ── Comandos existentes ──────────────────────────────────────
   .addSubcommand(s => s.setName('mostrar').setDescription('Posta o mapa no canal'))
   .addSubcommand(s => s.setName('atualizar').setDescription('Força re-render manual do mapa'))
 
@@ -61,9 +71,67 @@ const data = new SlashCommandBuilder()
 
   .addSubcommand(s => s
     .setName('celula')
-    .setDescription('Altera o tipo de uma célula do mapa base')
+    .setDescription('Altera o tipo de uma célula do mapa')
     .addStringOption(o => o.setName('pos').setDescription('Posição (ex: D3)').setRequired(true))
-    .addStringOption(o => o.setName('tipo').setDescription('Emoji do novo tipo').setRequired(true)));
+    .addStringOption(o => o.setName('tipo').setDescription('Emoji do novo tipo').setRequired(true)))
+
+  // ── Novos comandos de criação ────────────────────────────────
+  .addSubcommand(s => s
+    .setName('criar')
+    .setDescription('Cria um novo mapa vazio e o define como ativo')
+    .addStringOption(o => o
+      .setName('id')
+      .setDescription('Identificador único, sem espaços (ex: floresta-sombria)')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('nome')
+      .setDescription('Nome de exibição (ex: Floresta Sombria)')
+      .setRequired(true))
+    .addIntegerOption(o => o
+      .setName('colunas')
+      .setDescription('Número de colunas — gera A, B, C… (1–10)')
+      .setRequired(true)
+      .setMinValue(1).setMaxValue(10))
+    .addIntegerOption(o => o
+      .setName('linhas')
+      .setDescription('Número de linhas — gera 1, 2, 3… (1–20)')
+      .setRequired(true)
+      .setMinValue(1).setMaxValue(20))
+    .addStringOption(o => o
+      .setName('padrao')
+      .setDescription('Emoji padrão de todas as células (padrão: ⬜)')))
+
+  .addSubcommand(s => s
+    .setName('linha')
+    .setDescription('Preenche uma linha inteira do mapa com emojis')
+    .addIntegerOption(o => o
+      .setName('numero')
+      .setDescription('Número da linha (ex: 2)')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('tipos')
+      .setDescription('Emojis separados por vírgula, um por coluna (ex: ⬛,⬜,🟩,⬜,⬛)')
+      .setRequired(true)))
+
+  .addSubcommand(s => s
+    .setName('legenda')
+    .setDescription('Adiciona ou atualiza uma entrada na legenda do mapa')
+    .addStringOption(o => o
+      .setName('emoji')
+      .setDescription('Emoji do tipo de terreno')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('descricao')
+      .setDescription('Descrição do terreno (ex: Floresta Densa)')
+      .setRequired(true)))
+
+  .addSubcommand(s => s
+    .setName('carregar')
+    .setDescription('Troca o mapa ativo da sessão')
+    .addStringOption(o => o
+      .setName('id')
+      .setDescription('ID do mapa (ex: mar_profundo)')
+      .setRequired(true)));
 
 // ── Executor ──────────────────────────────────────────────────
 async function execute(interaction) {
@@ -72,11 +140,12 @@ async function execute(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  // Carrega estado do servidor
   const session = await sessionStore.load(guildId);
   const mapData = await mapStore.load(guildId, session.activeMap);
 
   switch (sub) {
+
+    // ── Comandos existentes ────────────────────────────────────
 
     case 'mostrar': {
       session.mapMessageId = null;
@@ -132,8 +201,8 @@ async function execute(interaction) {
     }
 
     case 'inimigo': {
-      const nome = interaction.options.getString('nome');
-      const pos  = interaction.options.getString('pos');
+      const nome  = interaction.options.getString('nome');
+      const pos   = interaction.options.getString('pos');
       const enemy = session.enemies.find(e => e.name.toLowerCase() === nome.toLowerCase());
 
       if (!enemy)
@@ -159,8 +228,8 @@ async function execute(interaction) {
     }
 
     case 'efeito': {
-      const id    = interaction.options.getString('id');
-      const valor = interaction.options.getNumber('valor');
+      const id     = interaction.options.getString('id');
+      const valor  = interaction.options.getNumber('valor');
       const effect = session.turnEffects.find(e => e.id === id);
 
       if (!effect)
@@ -185,6 +254,121 @@ async function execute(interaction) {
       const updated = await editMapMessage(interaction, session, mapData);
       await sessionStore.save(guildId, updated);
       await interaction.editReply(`✅ Célula **${pos}** alterada para ${tipo}.`);
+      break;
+    }
+
+    // ── Novos comandos de criação ──────────────────────────────
+
+    case 'criar': {
+      const id      = interaction.options.getString('id').toLowerCase().trim();
+      const nome    = interaction.options.getString('nome').trim();
+      const numCols = interaction.options.getInteger('colunas');
+      const numRows = interaction.options.getInteger('linhas');
+      const padrao  = interaction.options.getString('padrao')?.trim() ?? '⬜';
+
+      if (!validMapId(id))
+        return interaction.editReply('❌ ID inválido. Use apenas letras, números e hífens (ex: `floresta-sombria`).');
+
+      const cols = genCols(numCols);                              // ['A','B','C',...]
+      const rows = Array.from({ length: numRows }, (_, i) => i + 1); // [1,2,3,...]
+
+      const grid = {};
+      for (const col of cols)
+        for (const row of rows)
+          grid[`${col}${row}`] = padrao;
+
+      const newMap = {
+        id,
+        name:   nome,
+        cols,
+        rows,
+        legend: { [padrao]: 'Terreno padrão' },
+        grid,
+        paths:  {},
+      };
+
+      await mapStore.save(guildId, id, newMap);
+
+      // Ativa o novo mapa e força nova mensagem
+      session.activeMap    = id;
+      session.mapMessageId = null;
+      session.channelId    = null;
+
+      const updated = await editMapMessage(interaction, session, newMap);
+      await sessionStore.save(guildId, updated);
+
+      const colLabels = cols.join(', ');
+      await interaction.editReply([
+        `✅ Mapa **${nome}** criado — ${numCols} colunas (${colLabels}) × ${numRows} linhas.`,
+        '',
+        `Preencha linha por linha:`,
+        `\`/mapa linha numero:1 tipos:${Array(numCols).fill(padrao).join(',')}\``,
+        '',
+        `Ou altere células individuais:`,
+        `\`/mapa celula pos:A1 tipo:🟥\``,
+        '',
+        `Gerencie a legenda:`,
+        `\`/mapa legenda emoji:🟥 descricao:Chefe\``,
+      ].join('\n'));
+      break;
+    }
+
+    case 'linha': {
+      const numero = interaction.options.getInteger('numero');
+      const tipos  = interaction.options.getString('tipos')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (!mapData.rows.includes(numero))
+        return interaction.editReply(`❌ Linha \`${numero}\` não existe neste mapa (linhas: ${mapData.rows.join(', ')}).`);
+
+      if (tipos.length !== mapData.cols.length)
+        return interaction.editReply(
+          `❌ Esperava **${mapData.cols.length}** tipos (um por coluna: ${mapData.cols.join(', ')}), recebi **${tipos.length}**.`
+        );
+
+      for (let i = 0; i < mapData.cols.length; i++)
+        mapData.grid[`${mapData.cols[i]}${numero}`] = tipos[i];
+
+      await mapStore.save(guildId, session.activeMap, mapData);
+      const updated = await editMapMessage(interaction, session, mapData);
+      await sessionStore.save(guildId, updated);
+      await interaction.editReply(`✅ Linha **${numero}** preenchida: ${tipos.join(' ')}`);
+      break;
+    }
+
+    case 'legenda': {
+      const emoji     = interaction.options.getString('emoji').trim();
+      const descricao = interaction.options.getString('descricao').trim();
+
+      mapData.legend         = mapData.legend ?? {};
+      mapData.legend[emoji]  = descricao;
+
+      await mapStore.save(guildId, session.activeMap, mapData);
+      const updated = await editMapMessage(interaction, session, mapData);
+      await sessionStore.save(guildId, updated);
+      await interaction.editReply(`✅ Legenda: ${emoji} → **${descricao}**`);
+      break;
+    }
+
+    case 'carregar': {
+      const id = interaction.options.getString('id').toLowerCase().trim();
+
+      let novoMapa;
+      try {
+        novoMapa = await mapStore.load(guildId, id);
+      } catch {
+        return interaction.editReply(`❌ Mapa \`${id}\` não encontrado.`);
+      }
+
+      session.activeMap    = id;
+      session.mapMessageId = null;
+      session.channelId    = null;
+
+      const updated = await editMapMessage(interaction, session, novoMapa);
+      await sessionStore.save(guildId, updated);
+      await interaction.editReply(`✅ Mapa **${novoMapa.name}** carregado.`);
       break;
     }
 
