@@ -236,6 +236,59 @@ function extractCustomTag(text, customTags) {
   return null;
 }
 
+// ── Split flexível: expressão + texto/tags ────────────────────
+//
+// Consome tokens matematicamente válidos do início da string,
+// permitindo espaços ao redor de operadores.
+// Para quando encontra algo que não é dado, número ou operador
+// (ex: "dano", "Ada", "crítico"), que é tratado como texto livre.
+//
+// Exemplos:
+//   "1d6 * 1d4"         → { exprStr: "1d6*1d4", remainder: "" }
+//   "1d6 * 1d4 dano Ada" → { exprStr: "1d6*1d4", remainder: "dano Ada" }
+//   "2d6 Ada"            → { exprStr: "2d6",     remainder: "Ada" }
+//   "2d6 + 3 crítico"    → { exprStr: "2d6+3",   remainder: "crítico" }
+
+function splitExprFromText(raw) {
+  const TOKEN_RE = /^(?:\d*d(?:f|\d+)|\d+|[+\-*/()])/i;
+  const tokens        = [];
+  let pos             = 0;
+  let lastValidEnd    = 0;
+  let lastValidTokens = [];
+
+  while (pos < raw.length) {
+    while (pos < raw.length && raw[pos] === ' ') pos++;
+    if (pos >= raw.length) break;
+
+    const m = raw.slice(pos).match(TOKEN_RE);
+    if (!m) break;
+
+    tokens.push(m[0]);
+    pos += m[0].length;
+
+    // Expressão válida só termina em dado ou número (não em operador/parêntese aberto)
+    const last = tokens[tokens.length - 1];
+    if (/^\d*d(?:f|\d+)$/i.test(last) || /^\d+$/.test(last)) {
+      lastValidEnd    = pos;
+      lastValidTokens = [...tokens];
+    }
+  }
+
+  if (lastValidTokens.length === 0) {
+    // Nenhuma expressão encontrada — split no primeiro espaço
+    const si = raw.search(/\s/);
+    return {
+      exprStr:   si === -1 ? raw : raw.slice(0, si),
+      remainder: si === -1 ? '' : raw.slice(si + 1).trim(),
+    };
+  }
+
+  return {
+    exprStr:   lastValidTokens.join(''),
+    remainder: raw.slice(lastValidEnd).trim(),
+  };
+}
+
 // ── Parser principal ──────────────────────────────────────────
 
 function parse(raw, customTags = {}) {
@@ -251,15 +304,34 @@ function parse(raw, customTags = {}) {
     return { type: 'math', results: [result], freeText, tag: null, tagDef: null, raw };
   }
 
-  // Separa expressão de dado do texto livre
+  // Repetição N#XdY — verificada antes do split flexível
+  // (o "#" não é um operador matemático, exige o primeiro token exato)
   const spaceIdx  = raw.search(/\s/);
-  const diceExpr  = spaceIdx === -1 ? raw : raw.slice(0, spaceIdx);
-  const afterDice = spaceIdx === -1 ? '' : raw.slice(spaceIdx + 1).trim();
+  const firstWord = spaceIdx === -1 ? raw : raw.slice(0, spaceIdx);
+  const afterFirst = spaceIdx === -1 ? '' : raw.slice(spaceIdx + 1).trim();
 
-  // Detecta tags no texto livre
-  const tagMatch = extractBuiltinTag(afterDice)
-                ?? extractCustomTag(afterDice, customTags)
-                ?? { tag: null, tagDef: null, cleanText: afterDice };
+  const repeated = parseRepeatDice(firstWord);
+  if (repeated) {
+    const tagMatch = extractBuiltinTag(afterFirst)
+                  ?? extractCustomTag(afterFirst, customTags)
+                  ?? { tag: null, tagDef: null, cleanText: afterFirst };
+    const {
+      tag, tagDef, cleanText,
+      combatTag = null, combatTarget = null,
+      initiativeTag = false, initiativeTarget = null,
+    } = tagMatch;
+    return {
+      type: 'repeat', results: repeated, freeText: cleanText || null,
+      tag, tagDef, combatTag, combatTarget, initiativeTag, initiativeTarget, raw,
+    };
+  }
+
+  // Split flexível: permite espaços ao redor de operadores
+  const { exprStr, remainder } = splitExprFromText(raw);
+
+  const tagMatch = extractBuiltinTag(remainder)
+                ?? extractCustomTag(remainder, customTags)
+                ?? { tag: null, tagDef: null, cleanText: remainder };
 
   const {
     tag, tagDef, cleanText,
@@ -268,17 +340,8 @@ function parse(raw, customTags = {}) {
   } = tagMatch;
   const freeText = cleanText || null;
 
-  // Repetição N#XdY
-  const repeated = parseRepeatDice(diceExpr);
-  if (repeated) {
-    return {
-      type: 'repeat', results: repeated, freeText,
-      tag, tagDef, combatTag, combatTarget, initiativeTag, initiativeTarget, raw,
-    };
-  }
-
   // Expressão com dados e/ou operadores matemáticos
-  const expr = parseExpression(diceExpr);
+  const expr = parseExpression(exprStr);
   if (expr) {
     const compat = {
       rolls:    expr.rolls,
