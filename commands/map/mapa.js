@@ -8,6 +8,10 @@ const mapStore     = require('../../utils/mapStore');
 const { renderMap } = require('../../utils/mapRenderer');
 
 // ── Helper: edita a mensagem fixada ou posta nova ─────────────
+//
+// Se session.channelId estiver configurado (via /config canal destino:mapa),
+// o mapa sempre vai para aquele canal — mesmo quando posta uma mensagem nova.
+//
 async function editMapMessage(interaction, session, mapData) {
   const content = renderMap(mapData, session);
 
@@ -20,9 +24,15 @@ async function editMapMessage(interaction, session, mapData) {
     } catch { /* mensagem sumiu — posta nova abaixo */ }
   }
 
-  const msg = await interaction.channel.send(content);
+  // Usa canal configurado ou canal da interação como fallback
+  const destCh = session.channelId
+    ? await interaction.client.channels.fetch(session.channelId).catch(() => null)
+    : null;
+  const ch = destCh ?? interaction.channel;
+
+  const msg = await ch.send(content);
   session.mapMessageId = msg.id;
-  session.channelId    = interaction.channelId;
+  session.channelId    = ch.id;
   return session;
 }
 

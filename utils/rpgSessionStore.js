@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS = {
   showStatusInTracker:  true,
   showEffectsApplying:  true,
   decrementMode:        'round', // 'turn' ou 'round'
+  trackerFixed:         false,   // true = edita uma mensagem fixa ao invés de postar nova
 };
 
 const DEFAULT_SESSION = {

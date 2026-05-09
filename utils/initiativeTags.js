@@ -58,12 +58,13 @@ async function handleInitiative(guildId, channelId, value, rollLabel, target, di
     }
   }
 
-  // Remove entrada anterior do mesmo personagem/jogador
+  // Remove entrada anterior do mesmo personagem/jogador (PCs não têm múltiplos slots)
   combat.order = combat.order.filter(e =>
     (charId ? e.charId !== charId : e.discordId !== discordId)
   );
 
-  combat.order.push({ charId, name, emoji, team, initiative: value, discordId });
+  const slotKey = Math.random().toString(36).slice(2, 8);
+  combat.order.push({ charId, name, emoji, team, initiative: value, discordId, slotKey });
 
   await initiativeStore.save(guildId, channelId, combat);
 
