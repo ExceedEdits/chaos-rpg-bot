@@ -3,11 +3,11 @@
 //  Detecta rolagens, combat tags e iniciativa em mensagens normais.
 // ============================================================
 
-const { parse, parseSingleRoll } = require('../utils/diceParser');
-const { format }                 = require('../utils/diceFormatter');
-const tagStore                   = require('../utils/tagStore');
-const { executeCombatTag }       = require('../utils/combatTags');
-const { handleInitiative }       = require('../utils/initiativeTags');
+const { parse, parseExpression, buildExprLabel } = require('../utils/diceParser');
+const { format }                                  = require('../utils/diceFormatter');
+const tagStore                                    = require('../utils/tagStore');
+const { executeCombatTag }                        = require('../utils/combatTags');
+const { handleInitiative }                        = require('../utils/initiativeTags');
 
 const IGNORED_PREFIXES = ['/', '!', '?', '.', '-'];
 
@@ -41,9 +41,9 @@ function registerMessageRoll(client) {
 
       // ── Combat tag ────────────────────────────────────────────
       if (parsed.combatTag) {
-        const rpgSt2     = require('../utils/rpgSessionStore');
-        const resolved2  = await rpgSt2.resolveSession(message.guildId, message.channelId);
-        const activeChars = resolved2?.session?.activeChars ?? {};
+        const rpgSt      = require('../utils/rpgSessionStore');
+        const resolved   = await rpgSt.resolveSession(message.guildId, message.channelId);
+        const activeChars = resolved?.session?.activeChars ?? {};
         const msg = await executeCombatTag(
           message.guildId, parsed.combatTag, parsed.combatTarget, value, rollLabel, activeChars
         );
@@ -53,10 +53,18 @@ function registerMessageRoll(client) {
 
       // ── Rolagem normal ────────────────────────────────────────
       const rollFn = () => {
-        const baseNotation = parsed.results[0].notation.replace(/[+-]\d+$/, '').trim();
-        const r = parseSingleRoll(baseNotation);
-        return r ? { results: [r] } : null;
+        const expr = parseExpression(parsed.exprData?.notation ?? parsed.results[0].notation);
+        if (!expr) return null;
+        const compat = {
+          rolls:    expr.rolls,
+          total:    expr.total,
+          label:    buildExprLabel(expr),
+          notation: expr.notation,
+          sides:    expr.sides,
+        };
+        return { results: [compat], exprData: expr };
       };
+
       await message.reply({ content: format(parsed, rollFn) });
 
     } catch (err) {

@@ -1,20 +1,20 @@
 // ============================================================
-//  Chaos RPG Bot — /rolar (com combat tags e iniciativa)
+//  Chaos RPG Bot — /rolar
 // ============================================================
 
-const { SlashCommandBuilder }      = require('discord.js');
-const { parse, parseSingleRoll }   = require('../../utils/diceParser');
-const { format }                   = require('../../utils/diceFormatter');
-const tagStore                     = require('../../utils/tagStore');
-const { executeCombatTag }         = require('../../utils/combatTags');
-const { handleInitiative }         = require('../../utils/initiativeTags');
+const { SlashCommandBuilder }                    = require('discord.js');
+const { parse, parseExpression, buildExprLabel } = require('../../utils/diceParser');
+const { format }                                 = require('../../utils/diceFormatter');
+const tagStore                                   = require('../../utils/tagStore');
+const { executeCombatTag }                       = require('../../utils/combatTags');
+const { handleInitiative }                       = require('../../utils/initiativeTags');
 
 const data = new SlashCommandBuilder()
   .setName('rolar')
   .setDescription('Rola dados e expressões')
   .addStringOption(o => o
     .setName('expressao')
-    .setDescription('Ex: 2d6+3, 4df, &15 dano Ada, 1d20 iniciativa Ada')
+    .setDescription('Ex: 2d6+3, 2d6+1d4*2, (d20+5)*2, 4df, &15 dano Ada, 1d20 iniciativa')
     .setRequired(true));
 
 async function execute(interaction) {
@@ -26,7 +26,7 @@ async function execute(interaction) {
 
   if (!parsed) {
     await interaction.reply({
-      content: `❌ Não entendi \`${raw}\`. Exemplos: \`2d6\`, \`4df\`, \`3#d6\`, \`&2+5\``,
+      content: `❌ Não entendi \`${raw}\`. Exemplos: \`2d6\`, \`2d6+1d4\`, \`(d20+5)*2\`, \`4df\`, \`3#d6\`, \`&2+5\``,
       ephemeral: true,
     });
     return;
@@ -50,8 +50,8 @@ async function execute(interaction) {
 
   // ── Combat tag ──────────────────────────────────────────────
   if (parsed.combatTag) {
-    const resolved2  = await (require('../../utils/rpgSessionStore')).resolveSession(guildId, interaction.channelId);
-    const activeChars = resolved2?.session?.activeChars ?? {};
+    const resolved   = await (require('../../utils/rpgSessionStore')).resolveSession(guildId, interaction.channelId);
+    const activeChars = resolved?.session?.activeChars ?? {};
     const msg = await executeCombatTag(
       guildId, parsed.combatTag, parsed.combatTarget, value, rollLabel, activeChars
     );
@@ -61,9 +61,16 @@ async function execute(interaction) {
 
   // ── Rolagem normal ──────────────────────────────────────────
   const rollFn = () => {
-    const baseNotation = parsed.results[0].notation.replace(/[+-]\d+$/, '').trim();
-    const r = parseSingleRoll(baseNotation);
-    return r ? { results: [r] } : null;
+    const expr = parseExpression(parsed.exprData?.notation ?? parsed.results[0].notation);
+    if (!expr) return null;
+    const compat = {
+      rolls:    expr.rolls,
+      total:    expr.total,
+      label:    buildExprLabel(expr),
+      notation: expr.notation,
+      sides:    expr.sides,
+    };
+    return { results: [compat], exprData: expr };
   };
 
   await interaction.editReply({ content: format(parsed, rollFn) });

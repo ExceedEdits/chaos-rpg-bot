@@ -70,7 +70,7 @@ async function executeCombatTag(guildId, combatTag, target, value, rollLabel, ac
   const eventMsgs = formatEvents(result.char, result.events);
 
   const lines = [
-    `🎲 ${rollLabel} = **${value}** → ${tagLabel} em ${name}`,
+    `${rollLabel} = **${value}** → ${tagLabel} em ${name}`,
     result.log,
     '',
     formatFullStatus(result.char),
