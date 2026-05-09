@@ -32,10 +32,12 @@ function renderMap(mapData, session) {
       const cell = `${col}${row}`;
       const baseEmoji = mapData.grid[cell] ?? '⬛';
 
-      // Personagens na célula
-      const chars = Object.entries(session.characters ?? {})
-        .filter(([, c]) => c.pos === cell)
-        .map(([emoji]) => emoji);
+      // Personagens na célula (omitido quando emojisNoGrid está ativo)
+      const chars = mapData.emojisNoGrid
+        ? []
+        : Object.entries(session.characters ?? {})
+            .filter(([, c]) => c.pos === cell)
+            .map(([emoji]) => emoji);
 
       // NPCs na célula
       const npcs = Object.entries(session.npcs ?? {})

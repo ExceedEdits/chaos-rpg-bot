@@ -161,6 +161,18 @@ const data = new SlashCommandBuilder()
       .setDescription('ID do mapa (ex: mar_profundo)')
       .setRequired(true)))
 
+  .addSubcommand(s => s
+    .setName('config')
+    .setDescription('Configura opções visuais do mapa ativo')
+    .addStringOption(o => o
+      .setName('emojis')
+      .setDescription('Como exibir os personagens no grid')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Mostrar no grid',        value: 'grid'  },
+        { name: 'Apenas no texto abaixo', value: 'texto' },
+      )))
+
   .addSubcommandGroup(g => g
     .setName('personagem')
     .setDescription('Gerencia personagens no painel do mapa')
@@ -540,6 +552,19 @@ async function execute(interaction) {
       const updated = await editMapMessage(interaction, session, mapData);
       await sessionStore.save(guildId, updated);
       await interaction.editReply(`✅ Legenda: ${emoji} → **${descricao}**`);
+      break;
+    }
+
+    case 'config': {
+      const emojis = interaction.options.getString('emojis');
+      mapData.emojisNoGrid = emojis === 'texto';
+
+      await mapStore.save(guildId, session.activeMap, mapData);
+      const updated = await editMapMessage(interaction, session, mapData);
+      await sessionStore.save(guildId, updated);
+
+      const label = mapData.emojisNoGrid ? 'Apenas no texto abaixo' : 'Visível no grid';
+      await interaction.editReply(`✅ Personagens no grid: **${label}**`);
       break;
     }
 

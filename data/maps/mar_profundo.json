@@ -4,6 +4,8 @@
   "cols": ["A", "B", "C", "D", "E", "F"],
   "rows": [1, 2, 3, 4, 5],
 
+  "emojisNoGrid": false,
+
   "legend": {
     "⬛": "Queda",
     "⬜": "Plataforma",
