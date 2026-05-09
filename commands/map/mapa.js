@@ -159,11 +159,48 @@ const data = new SlashCommandBuilder()
     .addStringOption(o => o
       .setName('id')
       .setDescription('ID do mapa (ex: mar_profundo)')
-      .setRequired(true)));
+      .setRequired(true)))
+
+  .addSubcommandGroup(g => g
+    .setName('personagem')
+    .setDescription('Gerencia personagens no painel do mapa')
+    .addSubcommand(s => s
+      .setName('adicionar')
+      .setDescription('Adiciona um personagem ao painel')
+      .addStringOption(o => o
+        .setName('emoji')
+        .setDescription('Emoji do personagem (ex: 💀)')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome de exibição (ex: Ada)')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('local')
+        .setDescription('Posição inicial: célula (ex: B3) ou texto livre (ex: Entrada Norte)')))
+    .addSubcommand(s => s
+      .setName('remover')
+      .setDescription('Remove um personagem do painel')
+      .addStringOption(o => o
+        .setName('emoji')
+        .setDescription('Emoji do personagem')
+        .setRequired(true)))
+    .addSubcommand(s => s
+      .setName('posicao')
+      .setDescription('Atualiza a posição no texto do painel (sem mover no grid)')
+      .addStringOption(o => o
+        .setName('emoji')
+        .setDescription('Emoji do personagem')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('local')
+        .setDescription('Célula (ex: C4) ou texto livre (ex: Fora do Mapa)')
+        .setRequired(true))));
 
 // ── Executor ──────────────────────────────────────────────────
 async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
+  const group   = interaction.options.getSubcommandGroup(false);
   const guildId = interaction.guildId;
 
   await interaction.deferReply({ ephemeral: true });
@@ -171,6 +208,53 @@ async function execute(interaction) {
   const session = await sessionStore.load(guildId);
   const mapData = await mapStore.load(guildId, session.activeMap);
 
+  // ── Grupo: personagem ────────────────────────────────────────
+  if (group === 'personagem') {
+    const emoji = interaction.options.getString('emoji').trim();
+
+    switch (sub) {
+      case 'adicionar': {
+        if (session.characters[emoji])
+          return interaction.editReply(`❌ Personagem ${emoji} já existe no painel.`);
+
+        const nome  = interaction.options.getString('nome').trim();
+        const local = interaction.options.getString('local')?.trim() ?? '—';
+
+        session.characters[emoji] = { name: nome, pos: local, cover: false, coverNote: '' };
+        const updated = await editMapMessage(interaction, session, mapData);
+        await sessionStore.save(guildId, updated);
+        await interaction.editReply(`✅ ${emoji} **${nome}** adicionado — *${local}*.`);
+        break;
+      }
+
+      case 'remover': {
+        if (!session.characters[emoji])
+          return interaction.editReply(`❌ Personagem ${emoji} não encontrado.`);
+
+        const nome = session.characters[emoji].name;
+        delete session.characters[emoji];
+        const updated = await editMapMessage(interaction, session, mapData);
+        await sessionStore.save(guildId, updated);
+        await interaction.editReply(`✅ ${emoji} **${nome}** removido do painel.`);
+        break;
+      }
+
+      case 'posicao': {
+        if (!session.characters[emoji])
+          return interaction.editReply(`❌ Personagem ${emoji} não encontrado.`);
+
+        const local = interaction.options.getString('local').trim();
+        session.characters[emoji].pos = local;
+        const updated = await editMapMessage(interaction, session, mapData);
+        await sessionStore.save(guildId, updated);
+        await interaction.editReply(`✅ ${emoji} posição atualizada → *${local}*.`);
+        break;
+      }
+    }
+    return;
+  }
+
+  // ── Subcomandos diretos ──────────────────────────────────────
   switch (sub) {
 
     // ── Comandos existentes ────────────────────────────────────
