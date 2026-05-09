@@ -126,6 +126,22 @@ const data = new SlashCommandBuilder()
       .setRequired(true)))
 
   .addSubcommand(s => s
+    .setName('submatriz')
+    .setDescription('Preenche uma região retangular do mapa')
+    .addStringOption(o => o
+      .setName('de')
+      .setDescription('Célula superior esquerda (ex: B2)')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('ate')
+      .setDescription('Célula inferior direita (ex: D4)')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('tipos')
+      .setDescription('Emojis separados por vírgula, linha por linha da esquerda pra direita')
+      .setRequired(true)))
+
+  .addSubcommand(s => s
     .setName('legenda')
     .setDescription('Adiciona ou atualiza uma entrada na legenda do mapa')
     .addStringOption(o => o
@@ -372,6 +388,60 @@ async function execute(interaction) {
       const updated = await editMapMessage(interaction, session, mapData);
       await sessionStore.save(guildId, updated);
       await interaction.editReply(`✅ Coluna **${letra}** preenchida: ${tipos.join(' ')}`);
+      break;
+    }
+
+    case 'submatriz': {
+      const deRaw  = interaction.options.getString('de').toUpperCase().trim();
+      const ateRaw = interaction.options.getString('ate').toUpperCase().trim();
+      const tipos  = interaction.options.getString('tipos')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const parseCell = c => {
+        const m = c.match(/^([A-Z]+)(\d+)$/);
+        return m ? { col: m[1], row: parseInt(m[2], 10) } : null;
+      };
+
+      const from = parseCell(deRaw);
+      const to   = parseCell(ateRaw);
+
+      if (!from || !to)
+        return interaction.editReply('❌ Formato de célula inválido. Use letras seguidas de número (ex: `B2`).');
+
+      const colStart = mapData.cols.indexOf(from.col);
+      const colEnd   = mapData.cols.indexOf(to.col);
+      const rowStart = mapData.rows.indexOf(from.row);
+      const rowEnd   = mapData.rows.indexOf(to.row);
+
+      if (colStart === -1 || colEnd === -1)
+        return interaction.editReply(`❌ Coluna fora do mapa. Colunas válidas: ${mapData.cols.join(', ')}.`);
+      if (rowStart === -1 || rowEnd === -1)
+        return interaction.editReply(`❌ Linha fora do mapa. Linhas válidas: ${mapData.rows.join(', ')}.`);
+      if (colStart > colEnd || rowStart > rowEnd)
+        return interaction.editReply('❌ A célula `de` deve ser o canto superior esquerdo e `ate` o inferior direito.');
+
+      const subCols    = mapData.cols.slice(colStart, colEnd + 1);
+      const subRows    = mapData.rows.slice(rowStart, rowEnd + 1);
+      const esperados  = subCols.length * subRows.length;
+
+      if (tipos.length !== esperados)
+        return interaction.editReply(
+          `❌ A região ${deRaw}→${ateRaw} tem **${subCols.length} colunas × ${subRows.length} linhas = ${esperados} células**. Recebi **${tipos.length}** tipo(s).`
+        );
+
+      let i = 0;
+      for (const row of subRows)
+        for (const col of subCols)
+          mapData.grid[`${col}${row}`] = tipos[i++];
+
+      await mapStore.save(guildId, session.activeMap, mapData);
+      const updated = await editMapMessage(interaction, session, mapData);
+      await sessionStore.save(guildId, updated);
+      await interaction.editReply(
+        `✅ Submatriz **${deRaw}→${ateRaw}** (${subCols.length}×${subRows.length}) preenchida.`
+      );
       break;
     }
 
