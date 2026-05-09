@@ -1,0 +1,10 @@
+# Ambiente
+.env
+node_modules/
+
+# Logs do PM2
+logs/*.log
+
+# Sistemas operacionais
+.DS_Store
+Thumbs.db

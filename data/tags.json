@@ -1,0 +1,4 @@
+{
+  "_comment": "Tags customizadas para teste local. Em produção, use MongoDB.",
+  "tags": {}
+}

@@ -1,0 +1,37 @@
+{
+  "activeMap": "mar_profundo",
+  "mapMessageId": null,
+  "channelId": null,
+  "turnEffects": [
+    {
+      "id": "nivel_mar",
+      "label": "Nível do Mar",
+      "value": 10,
+      "unit": "",
+      "display": "## Nv. do Mar `{value}`"
+    }
+  ],
+  "characters": {
+    "💀": { "name": "Personagem 1", "pos": "B3", "cover": false },
+    "🔥": { "name": "Personagem 2", "pos": "B3", "cover": true, "coverNote": "Sob Cobertura na Concha" },
+    "🥷": { "name": "Personagem 3", "pos": "C3", "cover": false },
+    "🌊": { "name": "Personagem 4", "pos": "B3", "cover": true, "coverNote": "Sob Cobertura na Concha" },
+    "☠️": { "name": "Personagem 5", "pos": "D3", "cover": false },
+    "🧜‍♀️": { "name": "Personagem 6", "pos": "B3", "cover": true, "coverNote": "Sob Cobertura na Concha" }
+  },
+  "npcs": {
+    "Liza": { "pos": "B2", "movingTo": "B1" }
+  },
+  "enemies": [
+    { "name": "Watcher", "qty": 1, "pos": "F3", "outOfMap": false },
+    { "name": "Husk",    "qty": 2, "pos": null,  "outOfMap": true  },
+    { "name": "Hati",    "qty": 1, "pos": "B3",  "outOfMap": false },
+    { "name": "Miasma",  "qty": 1, "pos": "F3",  "outOfMap": false }
+  ],
+  "items": {
+    "B3": [
+      { "label": "Concha", "qty": 4 },
+      { "label": "Raia",   "qty": 1, "cover": true, "coverNote": "Sob Cobertura na Concha" }
+    ]
+  }
+}
