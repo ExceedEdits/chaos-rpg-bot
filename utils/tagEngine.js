@@ -63,7 +63,12 @@ function executeTag(parsedBase, sides, tag, rerollFn) {
       }
     }
 
-    attempts.push({ rolls, total, extra, attempt: i });
+    // Coleta todas as mensagens de texto cujo valor foi rolado nesta tentativa
+    const textos = tag.stopConditions
+      .filter(c => c.type === 'texto' && rolls.some(v => v === c.value))
+      .map(c => c.message);
+
+    attempts.push({ rolls, total, extra, textos, attempt: i });
 
     const stopCondsWithoutGatilho = {
       ...tag,
@@ -127,6 +132,7 @@ function formatTagResult(parsed, tag, sides, rerollFn, freeText) {
     if (isStop) line += ' 🛑';
 
     lines.push(line);
+    for (const txt of a.textos ?? []) lines.push(`> ✨ ${txt}`);
   }
 
   if (stopped) {

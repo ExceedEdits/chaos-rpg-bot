@@ -30,6 +30,21 @@ function parseConditions(raw) {
       if (isNaN(n) || n < 1) return `Número inválido em "${part}". Use: tentativas:N`;
       result.push({ type: 'attempts', value: n }); continue;
     }
+    if (part.startsWith('texto:')) {
+      // formato: texto:N:Mensagem aqui
+      // split only on first two colons so the message can contain colons
+      const first  = part.indexOf(':');
+      const second = part.indexOf(':', first + 1);
+      if (second === -1)
+        return `Formato inválido em "${part}". Use: texto:N:Mensagem (ex: texto:6:Crítico devastador!)`;
+      const triggerValue = parseInt(part.slice(first + 1, second), 10);
+      const message      = part.slice(second + 1).trim();
+      if (isNaN(triggerValue))
+        return `Valor inválido em "${part}". Use: texto:N:Mensagem`;
+      if (!message)
+        return `Mensagem vazia em "${part}". Use: texto:N:Mensagem`;
+      result.push({ type: 'texto', value: triggerValue, message }); continue;
+    }
     if (part.startsWith('gatilho:')) {
       const segments = part.split(':');
       // gatilho:N:XdY  →  segments = ['gatilho', 'N', 'XdY']
@@ -55,6 +70,7 @@ function condLabel(cond) {
     minOrMax: 'para no mínimo OU máximo',
     value:    `para quando sair ${cond.value}`,
     attempts: `para após ${cond.value} tentativas`,
+    texto:    `exibe mensagem ao sair ${cond.value}: "${cond.message}"`,
     gatilho:  `dispara ${cond.dice} ao sair ${cond.value}`,
   };
   return map[cond.type] ?? cond.type;
@@ -73,7 +89,7 @@ const data = new SlashCommandBuilder()
     .setDescription('Cria ou atualiza uma tag de rolagem')
     .addStringOption(o => o.setName('nome').setDescription('Nome da tag').setRequired(true))
     .addStringOption(o => o.setName('condicoes')
-      .setDescription('ex: min, max, minoumax, valor:N, tentativas:N, gatilho:N:XdY')
+      .setDescription('ex: min, max, minoumax, valor:N, tentativas:N, gatilho:N:XdY, texto:N:Mensagem')
       .setRequired(true))
     .addStringOption(o => o.setName('exibicao').setDescription('Como exibir os resultados')
       .setRequired(true)
