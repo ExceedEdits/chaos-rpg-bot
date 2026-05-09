@@ -44,6 +44,7 @@ async function collections() {
     maps:             _db.collection('maps'),
     tags:             _db.collection('tags'),
     characters:       _db.collection('characters'),
+    prefixes:         _db.collection('prefixes'),
   };
 }
 

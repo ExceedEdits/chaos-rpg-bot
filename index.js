@@ -8,8 +8,9 @@ const fs   = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const { registerMessageRoll }          = require('./listeners/messageRoll');
-const { register, unregister }         = require('./utils/guildStore');
+const { registerMessageRoll }    = require('./listeners/messageRoll');
+const { registerPrefixListener } = require('./listeners/prefixListener');
+const { register, unregister }   = require('./utils/guildStore');
 
 const USE_LOCAL = process.env.USE_LOCAL_DATA === 'true';
 
@@ -78,6 +79,7 @@ client.once('ready', async () => {
   console.log(`[Chaos RPG] Online como ${client.user.tag}`);
   await registerCommands();
   registerMessageRoll(client);
+  registerPrefixListener(client);
 
   // Registra todos os servidores onde o bot já está presente
   if (!USE_LOCAL) {
