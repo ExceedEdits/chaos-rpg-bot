@@ -4,9 +4,10 @@
 // ============================================================
 
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
-const sessionStore = require('../../utils/sessionStore');
-const rpgStore     = require('../../utils/rpgSessionStore');
+const sessionStore       = require('../../utils/sessionStore');
+const rpgStore           = require('../../utils/rpgSessionStore');
 const { resolveOrReply } = require('../../utils/sessionResolver');
+const { setPrefix }      = require('../../utils/prefixStore');
 
 function isMaster(member) {
   return member.permissions.has('Administrator')
@@ -37,6 +38,16 @@ const data = new SlashCommandBuilder()
       .setDescription('Canal onde as mensagens serão enviadas')
       .setRequired(true)
       .addChannelTypes(ChannelType.GuildText)))
+
+  .addSubcommand(s => s
+    .setName('prefixo')
+    .setDescription('Muda o prefixo de comandos de texto do servidor (Mestre)')
+    .addStringOption(o => o
+      .setName('prefixo')
+      .setDescription('Novo prefixo (1 a 5 caracteres, ex: ! $ >> ?)')
+      .setRequired(true)
+      .setMinLength(1)
+      .setMaxLength(5)))
 
   .addSubcommand(s => s
     .setName('tracker')
@@ -73,17 +84,20 @@ async function execute(interaction) {
     const session    = await sessionStore.load(guildId);
     const rpgSession = (await rpgStore.resolveSession(guildId, interaction.channelId))?.session;
     const settings   = rpgSession?.settings ?? {};
+    const { getPrefix } = require('../../utils/prefixStore');
+    const prefix     = await getPrefix(guildId);
 
-    const mapCh      = session.channelId     ? `<#${session.channelId}>`           : '*canal do comando*';
-    const trackCh    = rpgSession?.trackerChannelId ? `<#${rpgSession.trackerChannelId}>` : '*canal do comando*';
-    const trackFixed = settings.trackerFixed  ? 'Sim (mensagem fixa)'              : 'Nao (nova por turno)';
-    const decr       = settings.decrementMode === 'turn' ? 'Por turno' : 'Por rodada';
+    const mapCh      = session.channelId              ? `<#${session.channelId}>`                      : '*canal do comando*';
+    const trackCh    = rpgSession?.trackerChannelId   ? `<#${rpgSession.trackerChannelId}>`            : '*canal do comando*';
+    const trackFixed = settings.trackerFixed          ? 'Sim (mensagem fixa)'                         : 'Nao (nova por turno)';
+    const decr       = settings.decrementMode === 'turn' ? 'Por turno'                                : 'Por rodada';
 
     const lines = [
       '⚙️ **Configurações atuais**',
       '',
       `• Cargo de Mestre: **${process.env.MASTER_ROLE ?? 'Mestre'}** *(definido no .env)*`,
       `• Modo de dados: **${process.env.USE_LOCAL_DATA === 'true' ? 'Local (JSON)' : 'MongoDB Atlas'}**`,
+      `• Prefixo de texto: \`${prefix}\``,
       '',
       '**Canais de saída:**',
       `  • Mapa: ${mapCh}`,
@@ -95,6 +109,14 @@ async function execute(interaction) {
     ];
 
     await interaction.editReply(lines.join('\n'));
+    return;
+  }
+
+  // ── prefixo ───────────────────────────────────────────────
+  if (sub === 'prefixo') {
+    const novo = interaction.options.getString('prefixo');
+    await setPrefix(guildId, novo);
+    await interaction.editReply(`✅ Prefixo alterado para \`${novo}\`. Use \`${novo}help\` ou \`/help\` para ver os comandos.`);
     return;
   }
 
