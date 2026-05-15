@@ -19,7 +19,6 @@ function isMaster(member) {
 
 function addCombatOptions(sub) {
   return sub
-    .addIntegerOption(o => o.setName('hp').setDescription('HP máximo').setMinValue(1))
     .addStringOption(o => o.setName('emoji').setDescription('Emoji do personagem (opcional)'))
     .addStringOption(o => o.setName('time').setDescription('Emoji/cor do time (ex: 🟢, 🔴)'))
     .addUserOption(o => o.setName('jogador').setDescription('Jogador associado'))
@@ -46,8 +45,8 @@ const data = new SlashCommandBuilder()
   .addSubcommand(s => addCombatOptions(s
     .setName('editar')
     .setDescription('Edita atributos de um personagem')
-    .addStringOption(o => o.setName('nome').setDescription('Nome do personagem a editar').setRequired(true)))
-    // remove hp obrigatório que veio do addCombatOptions — hp é opcional no editar
+    .addStringOption(o => o.setName('nome').setDescription('Nome do personagem a editar').setRequired(true))
+    .addIntegerOption(o => o.setName('hp').setDescription('Novo HP máximo').setMinValue(1)))
   )
 
   .addSubcommand(s => s
