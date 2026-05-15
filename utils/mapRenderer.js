@@ -37,7 +37,14 @@ function renderMap(mapData, session) {
   lines.push('');
 
   // ── Cabeçalho de colunas ──────────────────────────────────────
-  lines.push('⬛' + mapData.cols.map(c => `\`${c}\``).join(''));
+  // Usa o emoji do terreno padrão (legenda com desc 'Terreno padrão'),
+  // ou o primeiro da legenda, ou ⬛ como fallback.
+  const defaultTerrain =
+    Object.entries(mapData.legend ?? {}).find(([, d]) => d === 'Terreno padrão')?.[0]
+    ?? Object.keys(mapData.legend ?? {})[0]
+    ?? '⬛';
+
+  lines.push(defaultTerrain + mapData.cols.map(c => `\`${c}\``).join(''));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
