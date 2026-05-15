@@ -1,15 +1,40 @@
 // ============================================================
 //  Chaos RPG Bot — Music Player
-//  Gerencia conexão de voz, AudioPlayer e fila por guild.
+//  Metadados/busca: play-dl (ainda funciona)
+//  Streaming de áudio: youtubei.js cliente ANDROID
+//    (retorna URLs diretas sem precisar decodificar o player do YT)
 // ============================================================
+
+// ffmpeg-static precisa estar no PATH antes de @discordjs/voice inicializar
+process.env.FFMPEG_PATH = require('ffmpeg-static');
 
 const {
   createAudioPlayer,
   createAudioResource,
   joinVoiceChannel,
   AudioPlayerStatus,
+  StreamType,
 } = require('@discordjs/voice');
-const play = require('play-dl');
+const { Readable } = require('stream');
+const play         = require('play-dl');
+
+// ── Innertube (youtubei.js) — inicializado de forma lazy ─────
+let _innertube     = null;
+let _innertubeInit = null;
+
+async function _getInnertube() {
+  if (_innertube) return _innertube;
+  if (!_innertubeInit) {
+    const { Innertube } = require('youtubei.js');
+    _innertubeInit = Innertube.create({
+      client_type:             'ANDROID',
+      generate_session_locally: true,
+      cache:                    null,
+    });
+  }
+  _innertube = await _innertubeInit;
+  return _innertube;
+}
 
 // ── Spotify (opcional) ────────────────────────────────────────
 if (process.env.SPOTIFY_CLIENT_ID) {
@@ -24,7 +49,6 @@ if (process.env.SPOTIFY_CLIENT_ID) {
 }
 
 // ── Estado global por guild ───────────────────────────────────
-// { connection, player, queue, currentTrack, textChannel }
 const states = new Map();
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -38,10 +62,47 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Extrai o video ID de qualquer formato de URL do YouTube. */
+function extractVideoId(url) {
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /\/embed\/([a-zA-Z0-9_-]{11})/,
+    /\/v\/([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/,   // ID puro
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/**
+ * Cria um stream de áudio para o URL do YouTube usando youtubei.js ANDROID.
+ * Retorna um Readable compatível com createAudioResource.
+ */
+async function _getYouTubeAudioStream(url) {
+  const videoId = extractVideoId(url);
+  if (!videoId) throw new Error(`Não foi possível extrair o ID do vídeo: ${url}`);
+
+  const yt   = await _getInnertube();
+  const info = await yt.getBasicInfo(videoId, 'ANDROID');
+
+  const download = await info.download({
+    type:    'audio',
+    quality: 'best',
+    client:  'ANDROID',
+  });
+
+  return Readable.from(download);
+}
+
+// ── Resolução de faixa ────────────────────────────────────────
+
 /**
  * Resolve uma query (nome, link YouTube ou link Spotify)
- * para um objeto de faixa.
- * @returns {{ title, url, duration, thumbnail, requestedBy }}
+ * para um objeto de faixa { title, url, duration, thumbnail, requestedBy }.
  */
 async function resolveTrack(query, requestedBy) {
   query = query.trim();
@@ -51,7 +112,7 @@ async function resolveTrack(query, requestedBy) {
     const info = await play.video_info(query);
     const v    = info.video_details;
     return {
-      title:       v.title          ?? 'Sem título',
+      title:       v.title ?? 'Sem título',
       url:         v.url,
       duration:    formatDuration(v.durationInSec),
       thumbnail:   v.thumbnails?.[0]?.url ?? null,
@@ -65,17 +126,20 @@ async function resolveTrack(query, requestedBy) {
   }
 
   // ── Spotify ───────────────────────────────────────────────
+  // sp_validate retorna 'track'|'album'|'playlist'|'search'|false
+  // 'search' = texto puro, não é Spotify
   let spType = false;
   try { spType = play.sp_validate(query); } catch {}
+  const isSpotify = spType === 'track' || spType === 'album' || spType === 'playlist';
 
-  if (spType) {
-    if (spType !== 'track') {
+  if (isSpotify) {
+    if (isSpotify && spType !== 'track') {
       throw new Error('Somente músicas individuais do Spotify são suportadas (não álbuns nem playlists).');
     }
     try {
       const sp          = await play.spotify(query);
       const searchQuery = `${sp.artists.map(a => a.name).join(', ')} ${sp.name}`;
-      const results     = await play.search(searchQuery, { limit: 1, source: { youtube: 'video' } });
+      const results     = await play.search(searchQuery, { limit: 1 });
       if (!results.length) throw new Error(`Nenhum resultado no YouTube para "${searchQuery}".`);
       const v = results[0];
       return {
@@ -97,7 +161,7 @@ async function resolveTrack(query, requestedBy) {
   }
 
   // ── Busca por texto no YouTube ────────────────────────────
-  const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
+  const results = await play.search(query, { limit: 1 });
   if (!results.length) throw new Error(`Nenhum resultado encontrado para "${query}".`);
   const v = results[0];
   return {
@@ -120,15 +184,13 @@ function _createState(guildId) {
   const state  = {
     connection:   null,
     player,
-    queue:        [],   // [{ title, url, duration, thumbnail, requestedBy }]
-    history:      [],   // últimas 20 faixas tocadas (mais recente = último)
+    queue:        [],
+    history:      [],   // últimas 20 faixas (mais recente = último)
     currentTrack: null,
     textChannel:  null,
   };
 
-  // Avança a fila automaticamente quando a faixa termina
   player.on(AudioPlayerStatus.Idle, () => {
-    // Salva no histórico antes de descartar
     if (state.currentTrack) {
       state.history.push(state.currentTrack);
       if (state.history.length > 20) state.history.shift();
@@ -137,13 +199,10 @@ function _createState(guildId) {
     _playNext(guildId);
   });
 
-  // Pula faixa com erro
   player.on('error', err => {
     console.error(`[Music][${guildId}] Player error: ${err.message}`);
     state.currentTrack = null;
-    state.textChannel
-      ?.send('❌ Erro ao reproduzir a faixa. Pulando...')
-      .catch(() => {});
+    state.textChannel?.send('❌ Erro ao reproduzir a faixa. Pulando...').catch(() => {});
     _playNext(guildId);
   });
 
@@ -174,15 +233,16 @@ async function _playNext(guildId) {
   state.currentTrack = track;
 
   try {
-    const stream   = await play.stream(track.url);
-    const resource = createAudioResource(stream.stream, { inputType: stream.type });
+    const audioStream = await _getYouTubeAudioStream(track.url);
+    // StreamType.Arbitrary → ffmpeg converte AAC/WebM para Opus automaticamente
+    const resource    = createAudioResource(audioStream, { inputType: StreamType.Arbitrary });
     state.player.play(resource);
 
     state.textChannel
       ?.send(`🎵 Tocando agora: **${track.title}** \`${track.duration}\` — pedido por *${track.requestedBy}*`)
       .catch(() => {});
   } catch (err) {
-    console.error(`[Music][${guildId}] Stream error para "${track.title}":`, err.message);
+    console.error(`[Music][${guildId}] Erro ao tocar "${track.title}":`, err.message);
     state.textChannel
       ?.send(`❌ Não foi possível tocar **${track.title}**. Pulando...`)
       .catch(() => {});
@@ -190,18 +250,12 @@ async function _playNext(guildId) {
   }
 }
 
-/**
- * Adiciona uma faixa à fila. Se o player estiver ocioso, começa a tocar.
- * Entra no canal de voz se necessário.
- *
- * @returns {{ position: number }} — 0 = tocando agora; >0 = posição na fila
- */
+// ── API pública ───────────────────────────────────────────────
+
 async function addToQueue(guildId, track, voiceChannel, textChannel) {
-  // Garante que existe estado para esta guild
   const state = states.get(guildId) ?? _createState(guildId);
   state.textChannel = textChannel;
 
-  // Conecta / reconecta ao canal de voz
   if (!state.connection) {
     const conn = joinVoiceChannel({
       channelId:      voiceChannel.id,
@@ -212,7 +266,6 @@ async function addToQueue(guildId, track, voiceChannel, textChannel) {
     conn.subscribe(state.player);
     state.connection = conn;
 
-    // Limpa estado se desconectado inesperadamente
     conn.on('stateChange', (_, next) => {
       if (next.status === 'destroyed' || next.status === 'disconnected') {
         destroyState(guildId);
@@ -234,18 +287,13 @@ async function addToQueue(guildId, track, voiceChannel, textChannel) {
   return { position: state.queue.length };
 }
 
-/**
- * Reinicia a faixa atual do começo sem avançar a fila.
- * Retorna true se bem-sucedido, false se não havia nada tocando.
- */
 async function restartCurrent(guildId) {
   const state = states.get(guildId);
   if (!state?.currentTrack) return false;
 
   try {
-    const stream   = await play.stream(state.currentTrack.url);
-    const resource = createAudioResource(stream.stream, { inputType: stream.type });
-    // play() em cima de um recurso já em andamento reinicia sem disparar Idle
+    const audioStream = await _getYouTubeAudioStream(state.currentTrack.url);
+    const resource    = createAudioResource(audioStream, { inputType: StreamType.Arbitrary });
     state.player.play(resource);
     return true;
   } catch (err) {
@@ -254,32 +302,21 @@ async function restartCurrent(guildId) {
   }
 }
 
-/**
- * Volta para a música anterior do histórico.
- * A faixa atual é empurrada de volta ao início da fila.
- * Retorna a faixa anterior ou null se o histórico estiver vazio.
- */
 async function goBack(guildId) {
   const state = states.get(guildId);
   if (!state || state.history.length === 0) return null;
 
   const prevTrack = state.history.pop();
 
-  // Devolve a faixa atual ao início da fila (sem salvá-la no histórico de novo)
   if (state.currentTrack) {
     state.queue.unshift(state.currentTrack);
   }
-  // Coloca a faixa anterior na frente da fila
   state.queue.unshift(prevTrack);
-
-  // Nula currentTrack ANTES de parar para o evento Idle não salvá-la no histórico
   state.currentTrack = null;
 
   if (state.player.state.status === AudioPlayerStatus.Idle) {
-    // Player já ocioso: avança diretamente
     await _playNext(guildId);
   } else {
-    // Para o player → dispara Idle → _playNext toca prevTrack
     state.player.stop();
   }
 
