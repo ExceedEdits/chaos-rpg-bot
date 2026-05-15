@@ -121,12 +121,18 @@ function _createState(guildId) {
     connection:   null,
     player,
     queue:        [],   // [{ title, url, duration, thumbnail, requestedBy }]
+    history:      [],   // últimas 20 faixas tocadas (mais recente = último)
     currentTrack: null,
     textChannel:  null,
   };
 
   // Avança a fila automaticamente quando a faixa termina
   player.on(AudioPlayerStatus.Idle, () => {
+    // Salva no histórico antes de descartar
+    if (state.currentTrack) {
+      state.history.push(state.currentTrack);
+      if (state.history.length > 20) state.history.shift();
+    }
     state.currentTrack = null;
     _playNext(guildId);
   });
@@ -228,10 +234,64 @@ async function addToQueue(guildId, track, voiceChannel, textChannel) {
   return { position: state.queue.length };
 }
 
+/**
+ * Reinicia a faixa atual do começo sem avançar a fila.
+ * Retorna true se bem-sucedido, false se não havia nada tocando.
+ */
+async function restartCurrent(guildId) {
+  const state = states.get(guildId);
+  if (!state?.currentTrack) return false;
+
+  try {
+    const stream   = await play.stream(state.currentTrack.url);
+    const resource = createAudioResource(stream.stream, { inputType: stream.type });
+    // play() em cima de um recurso já em andamento reinicia sem disparar Idle
+    state.player.play(resource);
+    return true;
+  } catch (err) {
+    console.error(`[Music][${guildId}] Restart error:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Volta para a música anterior do histórico.
+ * A faixa atual é empurrada de volta ao início da fila.
+ * Retorna a faixa anterior ou null se o histórico estiver vazio.
+ */
+async function goBack(guildId) {
+  const state = states.get(guildId);
+  if (!state || state.history.length === 0) return null;
+
+  const prevTrack = state.history.pop();
+
+  // Devolve a faixa atual ao início da fila (sem salvá-la no histórico de novo)
+  if (state.currentTrack) {
+    state.queue.unshift(state.currentTrack);
+  }
+  // Coloca a faixa anterior na frente da fila
+  state.queue.unshift(prevTrack);
+
+  // Nula currentTrack ANTES de parar para o evento Idle não salvá-la no histórico
+  state.currentTrack = null;
+
+  if (state.player.state.status === AudioPlayerStatus.Idle) {
+    // Player já ocioso: avança diretamente
+    await _playNext(guildId);
+  } else {
+    // Para o player → dispara Idle → _playNext toca prevTrack
+    state.player.stop();
+  }
+
+  return prevTrack;
+}
+
 module.exports = {
   getState,
   destroyState,
   resolveTrack,
   addToQueue,
+  restartCurrent,
+  goBack,
   formatDuration,
 };
