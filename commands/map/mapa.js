@@ -8,6 +8,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const rpgStore               = require('../../utils/rpgSessionStore');
 const { resolveOrReply, isSessionMaster } = require('../../utils/sessionResolver');
 const mapStore               = require('../../utils/mapStore');
+const characterStore         = require('../../utils/characterStore');
 const { renderMap }          = require('../../utils/mapRenderer');
 
 // ── Helper: edita mensagem fixada ou posta nova ───────────────
@@ -97,11 +98,131 @@ const data = new SlashCommandBuilder()
     .addStringOption(o => o.setName('emoji').setDescription('Emoji do personagem').setRequired(true))
     .addStringOption(o => o.setName('nota').setDescription('Nota de cobertura (opcional)')))
 
-  .addSubcommand(s => s
+  // ── Grupos de entidades ───────────────────────────────────────
+
+  .addSubcommandGroup(g => g
+    .setName('npc')
+    .setDescription('Gerencia NPCs no painel do mapa')
+    .addSubcommand(s => s
+      .setName('adicionar')
+      .setDescription('Adiciona um NPC ou personagem ao painel (emoji auto-detectado pelo nome)')
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome do NPC ou personagem')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('emoji')
+        .setDescription('Emoji override (opcional; auto-preenchido se o nome existir no sistema)'))
+      .addStringOption(o => o
+        .setName('local')
+        .setDescription('Posição inicial: célula (ex: B3) ou texto livre (ex: Entrada Norte)')))
+    .addSubcommand(s => s
+      .setName('remover')
+      .setDescription('Remove um NPC do painel')
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome do NPC')
+        .setRequired(true)))
+    .addSubcommand(s => s
+      .setName('posicao')
+      .setDescription('Atualiza a posição de um NPC no mapa')
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome do NPC')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('local')
+        .setDescription('Célula (ex: C4) ou texto livre (ex: Fora do Mapa)')
+        .setRequired(true))))
+
+  .addSubcommandGroup(g => g
     .setName('inimigo')
-    .setDescription('Move inimigo menor ou marca como fora do mapa')
-    .addStringOption(o => o.setName('nome').setDescription('Nome do inimigo').setRequired(true))
-    .addStringOption(o => o.setName('pos').setDescription('Célula destino ou "fora"').setRequired(true)))
+    .setDescription('Gerencia inimigos no painel do mapa')
+    .addSubcommand(s => s
+      .setName('adicionar')
+      .setDescription('Adiciona um inimigo ou grupo ao painel (emoji auto-detectado pelo nome)')
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome do inimigo ou NPC')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('emoji')
+        .setDescription('Emoji override (opcional; auto-preenchido se o nome existir no sistema)'))
+      .addIntegerOption(o => o
+        .setName('quantidade')
+        .setDescription('Quantidade (padrão: 1)')
+        .setMinValue(1))
+      .addStringOption(o => o
+        .setName('local')
+        .setDescription('Posição inicial: célula (ex: B3) ou "fora"')))
+    .addSubcommand(s => s
+      .setName('remover')
+      .setDescription('Remove um inimigo do painel')
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome do inimigo')
+        .setRequired(true)))
+    .addSubcommand(s => s
+      .setName('mover')
+      .setDescription('Move um inimigo para uma célula ou marca como fora do mapa')
+      .addStringOption(o => o
+        .setName('nome')
+        .setDescription('Nome do inimigo')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('pos')
+        .setDescription('Célula destino (ex: C4) ou "fora"')
+        .setRequired(true))))
+
+  .addSubcommandGroup(g => g
+    .setName('item')
+    .setDescription('Gerencia itens e estruturas no painel do mapa')
+    .addSubcommand(s => s
+      .setName('adicionar')
+      .setDescription('Adiciona um item ou estrutura a uma célula do mapa')
+      .addStringOption(o => o
+        .setName('label')
+        .setDescription('Nome do item ou estrutura (ex: Caixas, Porta de Madeira)')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('celula')
+        .setDescription('Célula onde o item está (ex: B3)')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('emoji')
+        .setDescription('Emoji do item (opcional)'))
+      .addIntegerOption(o => o
+        .setName('quantidade')
+        .setDescription('Quantidade (padrão: 1)')
+        .setMinValue(1))
+      .addStringOption(o => o
+        .setName('npc')
+        .setDescription('Nome de NPC vinculado para estruturas com HP/durabilidade (ex: Porta de Madeira)')))
+    .addSubcommand(s => s
+      .setName('remover')
+      .setDescription('Remove um item de uma célula')
+      .addStringOption(o => o
+        .setName('label')
+        .setDescription('Nome do item')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('celula')
+        .setDescription('Célula do item (ex: B3)')
+        .setRequired(true)))
+    .addSubcommand(s => s
+      .setName('cobertura')
+      .setDescription('Alterna cobertura de um item ou estrutura')
+      .addStringOption(o => o
+        .setName('label')
+        .setDescription('Nome do item')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('celula')
+        .setDescription('Célula do item (ex: B3)')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('nota')
+        .setDescription('Nota de cobertura (opcional)'))))
 
   .addSubcommand(s => s
     .setName('efeito')
@@ -492,6 +613,204 @@ async function execute(interaction) {
     return;
   }
 
+  // ── Grupo: npc ────────────────────────────────────────────────
+  if (group === 'npc') {
+    const nome = interaction.options.getString('nome').trim();
+
+    switch (sub) {
+      case 'adicionar': {
+        if (session.npcs[nome])
+          return interaction.editReply(`❌ NPC **${nome}** já está no painel.`);
+
+        // Auto-detecta emoji pelo nome no characterStore
+        let emoji = interaction.options.getString('emoji')?.trim() ?? null;
+        if (!emoji) {
+          const found = await characterStore.find(guildId, nome);
+          emoji = found?.emoji ?? null;
+        }
+
+        const local = interaction.options.getString('local')?.trim() ?? '—';
+        session.npcs[nome] = { pos: local, movingTo: null, emoji };
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+        await interaction.editReply(`✅ ${emoji ?? '🔵'} **${nome}** adicionado ao painel de NPCs — *${local}*.`);
+        break;
+      }
+
+      case 'remover': {
+        if (!session.npcs[nome])
+          return interaction.editReply(`❌ NPC **${nome}** não encontrado no painel.`);
+
+        delete session.npcs[nome];
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+        await interaction.editReply(`✅ **${nome}** removido do painel de NPCs.`);
+        break;
+      }
+
+      case 'posicao': {
+        if (!session.npcs[nome])
+          return interaction.editReply(`❌ NPC **${nome}** não encontrado no painel.`);
+
+        const local = interaction.options.getString('local').trim();
+        session.npcs[nome].pos = local;
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+        const emojiDisplay = session.npcs[nome].emoji ?? '🔵';
+        await interaction.editReply(`✅ ${emojiDisplay} **${nome}** → *${local}*.`);
+        break;
+      }
+    }
+    return;
+  }
+
+  // ── Grupo: inimigo ────────────────────────────────────────────
+  if (group === 'inimigo') {
+    const nome = interaction.options.getString('nome').trim();
+
+    switch (sub) {
+      case 'adicionar': {
+        if (session.enemies.find(e => e.name.toLowerCase() === nome.toLowerCase()))
+          return interaction.editReply(`❌ Inimigo **${nome}** já está no painel.`);
+
+        // Auto-detecta emoji pelo nome no characterStore
+        let emoji = interaction.options.getString('emoji')?.trim() ?? null;
+        if (!emoji) {
+          const found = await characterStore.find(guildId, nome);
+          emoji = found?.emoji ?? null;
+        }
+
+        const qty      = interaction.options.getInteger('quantidade') ?? 1;
+        const localRaw = interaction.options.getString('local')?.trim() ?? null;
+        const outOfMap = localRaw?.toLowerCase() === 'fora';
+        const pos      = outOfMap ? null : localRaw ? localRaw.toUpperCase() : null;
+
+        if (pos && !mapData.grid[pos])
+          return interaction.editReply(`❌ Célula \`${pos}\` não existe no mapa.`);
+
+        session.enemies.push({ name: nome, qty, pos, outOfMap, emoji });
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+
+        const posLabel = pos ? ` — **${pos}**` : outOfMap ? ' *(Fora do Mapa)*' : '';
+        await interaction.editReply(`✅ **${nome}** ×${qty} adicionado ao painel de inimigos${posLabel}.`);
+        break;
+      }
+
+      case 'remover': {
+        const idx = session.enemies.findIndex(e => e.name.toLowerCase() === nome.toLowerCase());
+        if (idx === -1)
+          return interaction.editReply(`❌ Inimigo **${nome}** não encontrado no painel.`);
+
+        session.enemies.splice(idx, 1);
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+        await interaction.editReply(`✅ **${nome}** removido do painel de inimigos.`);
+        break;
+      }
+
+      case 'mover': {
+        const enemy = session.enemies.find(e => e.name.toLowerCase() === nome.toLowerCase());
+        if (!enemy)
+          return interaction.editReply(`❌ Inimigo **${nome}** não encontrado no painel.`);
+
+        const pos = interaction.options.getString('pos');
+        if (pos.toLowerCase() === 'fora') {
+          enemy.outOfMap = true;
+          enemy.pos      = null;
+          const updated = await editMapMessage(interaction, session, mapData);
+          await rpgStore.saveSession(guildId, sessionId, updated);
+          await interaction.editReply(`✅ **${enemy.name}** marcado como Fora do Mapa.`);
+        } else {
+          const cell = pos.toUpperCase();
+          if (!mapData.grid[cell])
+            return interaction.editReply(`❌ Célula \`${cell}\` não existe no mapa.`);
+          enemy.outOfMap = false;
+          enemy.pos      = cell;
+          const updated = await editMapMessage(interaction, session, mapData);
+          await rpgStore.saveSession(guildId, sessionId, updated);
+          await interaction.editReply(`✅ **${enemy.name}** movido para **${cell}**.`);
+        }
+        break;
+      }
+    }
+    return;
+  }
+
+  // ── Grupo: item ───────────────────────────────────────────────
+  if (group === 'item') {
+    switch (sub) {
+      case 'adicionar': {
+        const label     = interaction.options.getString('label').trim();
+        const celulaRaw = interaction.options.getString('celula').toUpperCase().trim();
+        const emoji     = interaction.options.getString('emoji')?.trim() ?? null;
+        const qty       = interaction.options.getInteger('quantidade') ?? 1;
+        const npcRef    = interaction.options.getString('npc')?.trim() ?? null;
+
+        if (!mapData.grid[celulaRaw])
+          return interaction.editReply(`❌ Célula \`${celulaRaw}\` não existe no mapa.`);
+
+        if (!session.items[celulaRaw]) session.items[celulaRaw] = [];
+        if (session.items[celulaRaw].find(i => i.label.toLowerCase() === label.toLowerCase()))
+          return interaction.editReply(`❌ Item **${label}** já existe em **${celulaRaw}**.`);
+
+        session.items[celulaRaw].push({ label, qty, cover: false, coverNote: '', emoji, npcRef });
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+
+        const npcNote = npcRef ? ` *(HP via NPC: ${npcRef} — use \`/npc ver\` para checar)*` : '';
+        await interaction.editReply(`✅ **${label}** ×${qty} adicionado em **${celulaRaw}**${npcNote}.`);
+        break;
+      }
+
+      case 'remover': {
+        const label     = interaction.options.getString('label').trim();
+        const celulaRaw = interaction.options.getString('celula').toUpperCase().trim();
+
+        const list = session.items[celulaRaw];
+        if (!list || list.length === 0)
+          return interaction.editReply(`❌ Nenhum item em **${celulaRaw}**.`);
+
+        const idx = list.findIndex(i => i.label.toLowerCase() === label.toLowerCase());
+        if (idx === -1)
+          return interaction.editReply(`❌ Item **${label}** não encontrado em **${celulaRaw}**.`);
+
+        list.splice(idx, 1);
+        if (list.length === 0) delete session.items[celulaRaw];
+
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+        await interaction.editReply(`✅ **${label}** removido de **${celulaRaw}**.`);
+        break;
+      }
+
+      case 'cobertura': {
+        const label     = interaction.options.getString('label').trim();
+        const celulaRaw = interaction.options.getString('celula').toUpperCase().trim();
+        const nota      = interaction.options.getString('nota')?.trim() ?? null;
+
+        const list = session.items[celulaRaw];
+        const item = list?.find(i => i.label.toLowerCase() === label.toLowerCase());
+        if (!item)
+          return interaction.editReply(`❌ Item **${label}** não encontrado em **${celulaRaw}**.`);
+
+        if (nota) {
+          item.cover     = true;
+          item.coverNote = nota;
+        } else {
+          item.cover     = !item.cover;
+          if (!item.cover) item.coverNote = '';
+        }
+
+        const updated = await editMapMessage(interaction, session, mapData);
+        await rpgStore.saveSession(guildId, sessionId, updated);
+        await interaction.editReply(`✅ Cobertura ${item.cover ? 'ativada' : 'removida'} para **${label}** em **${celulaRaw}**.`);
+        break;
+      }
+    }
+    return;
+  }
+
   // ── Subcomandos diretos ───────────────────────────────────────
   switch (sub) {
 
@@ -545,33 +864,6 @@ async function execute(interaction) {
       const updated = await editMapMessage(interaction, session, mapData);
       await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ Cobertura ${char.cover ? 'ativada' : 'removida'} para ${emoji}.`);
-      break;
-    }
-
-    case 'inimigo': {
-      const nome  = interaction.options.getString('nome');
-      const pos   = interaction.options.getString('pos');
-      const enemy = session.enemies.find(e => e.name.toLowerCase() === nome.toLowerCase());
-
-      if (!enemy)
-        return interaction.editReply(`❌ Inimigo \`${nome}\` não encontrado.`);
-
-      if (pos.toLowerCase() === 'fora') {
-        enemy.outOfMap = true;
-        enemy.pos      = null;
-        const updated = await editMapMessage(interaction, session, mapData);
-        await rpgStore.saveSession(guildId, sessionId, updated);
-        await interaction.editReply(`✅ **${enemy.name}** marcado como Fora do Mapa.`);
-      } else {
-        const cell = pos.toUpperCase();
-        if (!mapData.grid[cell])
-          return interaction.editReply(`❌ Célula \`${cell}\` não existe no mapa.`);
-        enemy.outOfMap = false;
-        enemy.pos      = cell;
-        const updated = await editMapMessage(interaction, session, mapData);
-        await rpgStore.saveSession(guildId, sessionId, updated);
-        await interaction.editReply(`✅ **${enemy.name}** movido para **${cell}**.`);
-      }
       break;
     }
 

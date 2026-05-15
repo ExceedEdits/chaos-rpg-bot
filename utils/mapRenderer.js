@@ -70,11 +70,13 @@ function renderMap(mapData, session) {
     }
   }
 
-  const npcCells = new Set(
-    Object.values(session.npcs ?? {})
-      .filter(n => n.pos)
-      .map(n => n.pos)
-  );
+  // Mapa célula → emoji do NPC para renderização no grid
+  const npcCellEmoji = new Map();
+  for (const [name, npc] of Object.entries(session.npcs ?? {})) {
+    if (npc.pos && npc.pos.match(/^[A-Z]+\d+$/)) {
+      npcCellEmoji.set(npc.pos, npc.emoji ?? '🔵');
+    }
+  }
 
   const rowLines = [];
   for (const row of mapData.rows) {
@@ -88,8 +90,8 @@ function renderMap(mapData, session) {
       if (charsHere?.length > 0) {
         // Exatamente 1 emoji — preserva a largura da célula
         cells.push(charsHere[0]);
-      } else if (npcCells.has(cell)) {
-        cells.push('🔵');
+      } else if (npcCellEmoji.has(cell)) {
+        cells.push(npcCellEmoji.get(cell));
       } else {
         cells.push(baseEmoji);
       }
@@ -126,7 +128,8 @@ function renderMap(mapData, session) {
     lines.push('');
     lines.push('**NPCs:**');
     for (const [name, npc] of Object.entries(session.npcs ?? {})) {
-      let line = `🔵 **${name}** — ${npc.pos ?? '—'}`;
+      const emojiDisplay = npc.emoji ?? '🔵';
+      let line = `${emojiDisplay} **${name}** — ${npc.pos ?? '—'}`;
       if (npc.movingTo) line += ` → ${npc.movingTo}`;
       lines.push(line);
     }
@@ -137,10 +140,11 @@ function renderMap(mapData, session) {
     lines.push('');
     lines.push('**Inimigos:**');
     for (const e of session.enemies ?? []) {
+      const emojiDisplay = e.emoji ? `${e.emoji} ` : '— ';
       if (e.outOfMap) {
-        lines.push(`— **${e.name}** ×${e.qty} *(Fora do Mapa)*`);
+        lines.push(`${emojiDisplay}**${e.name}** ×${e.qty} *(Fora do Mapa)*`);
       } else {
-        lines.push(`— **${e.name}** ×${e.qty} — ${e.pos}`);
+        lines.push(`${emojiDisplay}**${e.name}** ×${e.qty} — ${e.pos}`);
       }
     }
   }
@@ -151,7 +155,9 @@ function renderMap(mapData, session) {
     lines.push('**Estruturas/Itens/Criaturas:**');
     for (const [cell, itemList] of Object.entries(session.items ?? {})) {
       for (const item of itemList) {
-        let line = `📦 **${item.label}** ×${item.qty} — ${cell}`;
+        const emojiDisplay = item.emoji ?? '📦';
+        let line = `${emojiDisplay} **${item.label}** ×${item.qty} — ${cell}`;
+        if (item.npcRef) line += ` *(HP: /npc ver ${item.npcRef})*`;
         if (item.cover) line += item.coverNote ? ` *(${item.coverNote})*` : ' *(Cobertura)*';
         lines.push(line);
       }
