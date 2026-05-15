@@ -142,26 +142,42 @@ const data = new SlashCommandBuilder()
 
   .addSubcommand(s => s
     .setName('linha')
-    .setDescription('Preenche uma linha inteira do mapa com emojis')
+    .setDescription('Preenche uma linha inteira do mapa')
     .addIntegerOption(o => o
       .setName('numero')
       .setDescription('Número da linha (ex: 2)')
       .setRequired(true))
     .addStringOption(o => o
+      .setName('modo')
+      .setDescription('Preencher com um emoji único ou sequência personalizada')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Padrão — mesmo emoji em todas as células',             value: 'padrao'       },
+        { name: 'Personalizado — um emoji por célula, separado por vírgula', value: 'personalizado' },
+      ))
+    .addStringOption(o => o
       .setName('tipos')
-      .setDescription('Emojis separados por vírgula, um por coluna (ex: ⬛,⬜,🟩,⬜,⬛)')
+      .setDescription('Emoji único (ex: ⬜) ou sequência por vírgula (ex: ⬛,⬜,🟩,⬛)')
       .setRequired(true)))
 
   .addSubcommand(s => s
     .setName('coluna')
-    .setDescription('Preenche uma coluna inteira do mapa com emojis')
+    .setDescription('Preenche uma coluna inteira do mapa')
     .addStringOption(o => o
       .setName('letra')
       .setDescription('Letra da coluna (ex: B)')
       .setRequired(true))
     .addStringOption(o => o
+      .setName('modo')
+      .setDescription('Preencher com um emoji único ou sequência personalizada')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Padrão — mesmo emoji em todas as células',             value: 'padrao'       },
+        { name: 'Personalizado — um emoji por célula, separado por vírgula', value: 'personalizado' },
+      ))
+    .addStringOption(o => o
       .setName('tipos')
-      .setDescription('Emojis separados por vírgula, um por linha (ex: ⬜,🟩,🟫,⬜)')
+      .setDescription('Emoji único (ex: ⬜) ou sequência por vírgula (ex: ⬜,🟩,🟫,⬜)')
       .setRequired(true)))
 
   .addSubcommand(s => s
@@ -176,8 +192,16 @@ const data = new SlashCommandBuilder()
       .setDescription('Célula inferior direita (ex: D4)')
       .setRequired(true))
     .addStringOption(o => o
+      .setName('modo')
+      .setDescription('Preencher com um emoji único ou sequência personalizada')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Padrão — mesmo emoji em toda a região',                    value: 'padrao'       },
+        { name: 'Personalizado — um emoji por célula, separado por vírgula', value: 'personalizado' },
+      ))
+    .addStringOption(o => o
       .setName('tipos')
-      .setDescription('Emojis separados por vírgula, linha por linha da esquerda pra direita')
+      .setDescription('Emoji único (ex: 🟥) ou sequência linha a linha, da esquerda pra direita')
       .setRequired(true)))
 
   .addSubcommand(s => s
@@ -583,15 +607,22 @@ async function execute(interaction) {
 
     case 'linha': {
       const numero = interaction.options.getInteger('numero');
-      const tipos  = interaction.options.getString('tipos')
-        .split(',').map(s => s.trim()).filter(Boolean);
+      const modo   = interaction.options.getString('modo');
+      const raw    = interaction.options.getString('tipos').trim();
 
       if (!mapData.rows.includes(numero))
         return interaction.editReply(`❌ Linha \`${numero}\` não existe neste mapa (linhas: ${mapData.rows.join(', ')}).`);
-      if (tipos.length !== mapData.cols.length)
-        return interaction.editReply(
-          `❌ Esperava **${mapData.cols.length}** tipos (um por coluna: ${mapData.cols.join(', ')}), recebi **${tipos.length}**.`
-        );
+
+      let tipos;
+      if (modo === 'padrao') {
+        tipos = Array(mapData.cols.length).fill(raw);
+      } else {
+        tipos = raw.split(',').map(s => s.trim()).filter(Boolean);
+        if (tipos.length !== mapData.cols.length)
+          return interaction.editReply(
+            `❌ Esperava **${mapData.cols.length}** emojis (um por coluna: ${mapData.cols.join(', ')}), recebi **${tipos.length}**.`
+          );
+      }
 
       for (let i = 0; i < mapData.cols.length; i++)
         mapData.grid[`${mapData.cols[i]}${numero}`] = tipos[i];
@@ -605,15 +636,22 @@ async function execute(interaction) {
 
     case 'coluna': {
       const letra = interaction.options.getString('letra').toUpperCase().trim();
-      const tipos = interaction.options.getString('tipos')
-        .split(',').map(s => s.trim()).filter(Boolean);
+      const modo  = interaction.options.getString('modo');
+      const raw   = interaction.options.getString('tipos').trim();
 
       if (!mapData.cols.includes(letra))
         return interaction.editReply(`❌ Coluna \`${letra}\` não existe neste mapa (colunas: ${mapData.cols.join(', ')}).`);
-      if (tipos.length !== mapData.rows.length)
-        return interaction.editReply(
-          `❌ Esperava **${mapData.rows.length}** tipos (um por linha: ${mapData.rows.join(', ')}), recebi **${tipos.length}**.`
-        );
+
+      let tipos;
+      if (modo === 'padrao') {
+        tipos = Array(mapData.rows.length).fill(raw);
+      } else {
+        tipos = raw.split(',').map(s => s.trim()).filter(Boolean);
+        if (tipos.length !== mapData.rows.length)
+          return interaction.editReply(
+            `❌ Esperava **${mapData.rows.length}** emojis (um por linha: ${mapData.rows.join(', ')}), recebi **${tipos.length}**.`
+          );
+      }
 
       for (let i = 0; i < mapData.rows.length; i++)
         mapData.grid[`${letra}${mapData.rows[i]}`] = tipos[i];
@@ -628,8 +666,8 @@ async function execute(interaction) {
     case 'submatriz': {
       const deRaw  = interaction.options.getString('de').toUpperCase().trim();
       const ateRaw = interaction.options.getString('ate').toUpperCase().trim();
-      const tipos  = interaction.options.getString('tipos')
-        .split(',').map(s => s.trim()).filter(Boolean);
+      const modo   = interaction.options.getString('modo');
+      const raw    = interaction.options.getString('tipos').trim();
 
       const parseCell = c => {
         const m = c.match(/^([A-Z]+)(\d+)$/);
@@ -658,10 +696,16 @@ async function execute(interaction) {
       const subRows   = mapData.rows.slice(rowStart, rowEnd + 1);
       const esperados = subCols.length * subRows.length;
 
-      if (tipos.length !== esperados)
-        return interaction.editReply(
-          `❌ A região ${deRaw}→${ateRaw} tem **${subCols.length} colunas × ${subRows.length} linhas = ${esperados} células**. Recebi **${tipos.length}** tipo(s).`
-        );
+      let tipos;
+      if (modo === 'padrao') {
+        tipos = Array(esperados).fill(raw);
+      } else {
+        tipos = raw.split(',').map(s => s.trim()).filter(Boolean);
+        if (tipos.length !== esperados)
+          return interaction.editReply(
+            `❌ A região ${deRaw}→${ateRaw} tem **${subCols.length}×${subRows.length} = ${esperados} células**. Recebi **${tipos.length}** emoji(s).`
+          );
+      }
 
       let i = 0;
       for (const row of subRows)
