@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_SESSION = {
-  activeMap:    'mar_profundo',
+  activeMap:    null,
   mapMessageId: null,
   channelId:    null,
   turnEffects:  [],

@@ -59,6 +59,45 @@ async function saveMongo(guildId, mapId, mapData) {
   );
 }
 
+// ── Local: listar ─────────────────────────────────────────────
+
+function listLocal() {
+  if (!fs.existsSync(MAPS_DIR)) return [];
+  return fs.readdirSync(MAPS_DIR)
+    .filter(f => f.endsWith('.json'))
+    .map(f => {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(MAPS_DIR, f), 'utf8'));
+        return { id: data.id ?? f.replace('.json', ''), name: data.name ?? f.replace('.json', '') };
+      } catch { return null; }
+    })
+    .filter(Boolean);
+}
+
+async function listMongo(guildId) {
+  const { collections } = require('./db');
+  const { maps } = await collections();
+  const docs = await maps.find({ guildId }).toArray();
+  return docs.map(d => ({ id: d.id, name: d.name }));
+}
+
+// ── Local: remover ────────────────────────────────────────────
+
+function removeLocal(mapId) {
+  const filePath = path.join(MAPS_DIR, `${mapId}.json`);
+  if (!fs.existsSync(filePath))
+    throw new Error(`Mapa "${mapId}" não encontrado.`);
+  fs.unlinkSync(filePath);
+}
+
+async function removeMongo(guildId, mapId) {
+  const { collections } = require('./db');
+  const { maps } = await collections();
+  const result = await maps.deleteOne({ _id: docId(guildId, mapId) });
+  if (result.deletedCount === 0)
+    throw new Error(`Mapa "${mapId}" não encontrado.`);
+}
+
 // ── Interface unificada ───────────────────────────────────────
 
 async function load(guildId, mapId) {
@@ -69,4 +108,12 @@ async function save(guildId, mapId, mapData) {
   return USE_LOCAL ? saveLocal(mapId, mapData) : saveMongo(guildId, mapId, mapData);
 }
 
-module.exports = { load, save };
+async function list(guildId) {
+  return USE_LOCAL ? listLocal() : listMongo(guildId);
+}
+
+async function remove(guildId, mapId) {
+  return USE_LOCAL ? removeLocal(mapId) : removeMongo(guildId, mapId);
+}
+
+module.exports = { load, save, list, remove };

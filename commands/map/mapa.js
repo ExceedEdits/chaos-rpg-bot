@@ -1,16 +1,19 @@
 // ============================================================
 //  Chaos RPG Bot — /mapa
+//  O mapa é obrigatoriamente vinculado a uma sessão RPG.
+//  Use /rpg criar + /rpg entrar antes de usar comandos de mapa.
 // ============================================================
 
 const { SlashCommandBuilder } = require('discord.js');
-const sessionStore = require('../../utils/sessionStore');
-const mapStore     = require('../../utils/mapStore');
-const { renderMap } = require('../../utils/mapRenderer');
+const rpgStore               = require('../../utils/rpgSessionStore');
+const { resolveOrReply }     = require('../../utils/sessionResolver');
+const mapStore               = require('../../utils/mapStore');
+const { renderMap }          = require('../../utils/mapRenderer');
 
-// ── Helper: edita a mensagem fixada ou posta nova ─────────────
+// ── Helper: edita mensagem fixada ou posta nova ───────────────
 //
-// Se session.channelId estiver configurado (via /config canal destino:mapa),
-// o mapa sempre vai para aquele canal — mesmo quando posta uma mensagem nova.
+// Usa session.channelId (canal do mapa) se configurado.
+// Retorna a session com mapMessageId / channelId atualizados.
 //
 async function editMapMessage(interaction, session, mapData) {
   const content = renderMap(mapData, session);
@@ -24,7 +27,6 @@ async function editMapMessage(interaction, session, mapData) {
     } catch { /* mensagem sumiu — posta nova abaixo */ }
   }
 
-  // Usa canal configurado ou canal da interação como fallback
   const destCh = session.channelId
     ? await interaction.client.channels.fetch(session.channelId).catch(() => null)
     : null;
@@ -46,14 +48,27 @@ function validMapId(id) {
   return /^[\w-]+$/.test(id);
 }
 
+function isMaster(member) {
+  return member.permissions.has('Administrator')
+      || member.roles.cache.some(r => r.name === (process.env.MASTER_ROLE ?? 'Mestre'));
+}
+
 // ── Definição do comando ──────────────────────────────────────
 const data = new SlashCommandBuilder()
   .setName('mapa')
-  .setDescription('Controles do mapa de combate')
+  .setDescription('Controles do mapa de combate (requer sessão RPG vinculada)')
 
-  // ── Comandos existentes ──────────────────────────────────────
   .addSubcommand(s => s.setName('mostrar').setDescription('Posta o mapa no canal'))
   .addSubcommand(s => s.setName('atualizar').setDescription('Força re-render manual do mapa'))
+  .addSubcommand(s => s.setName('listar').setDescription('Lista todos os mapas disponíveis nesta sessão'))
+
+  .addSubcommand(s => s
+    .setName('remover')
+    .setDescription('Remove um mapa permanentemente (Mestre)')
+    .addStringOption(o => o
+      .setName('id')
+      .setDescription('ID do mapa a remover (ex: floresta-sombria)')
+      .setRequired(true)))
 
   .addSubcommand(s => s
     .setName('mover')
@@ -85,10 +100,9 @@ const data = new SlashCommandBuilder()
     .addStringOption(o => o.setName('pos').setDescription('Posição (ex: D3)').setRequired(true))
     .addStringOption(o => o.setName('tipo').setDescription('Emoji do novo tipo').setRequired(true)))
 
-  // ── Novos comandos de criação ────────────────────────────────
   .addSubcommand(s => s
     .setName('criar')
-    .setDescription('Cria um novo mapa vazio e o define como ativo')
+    .setDescription('Cria um novo mapa vazio e o define como ativo (Mestre)')
     .addStringOption(o => o
       .setName('id')
       .setDescription('Identificador único, sem espaços (ex: floresta-sombria)')
@@ -224,13 +238,155 @@ async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const group   = interaction.options.getSubcommandGroup(false);
   const guildId = interaction.guildId;
+  const master  = isMaster(interaction.member);
 
   await interaction.deferReply({ ephemeral: true });
 
-  const session = await sessionStore.load(guildId);
-  const mapData = await mapStore.load(guildId, session.activeMap);
+  // ── Sessão RPG obrigatória ────────────────────────────────────
+  const resolved = await resolveOrReply(interaction);
+  if (!resolved) return;
+  const { session, sessionId } = resolved;
 
-  // ── Grupo: personagem ────────────────────────────────────────
+  // Garante campos do mapa presentes (sessões antigas)
+  session.characters  = session.characters  ?? {};
+  session.npcs        = session.npcs        ?? {};
+  session.enemies     = session.enemies     ?? [];
+  session.items       = session.items       ?? {};
+  session.turnEffects = session.turnEffects ?? [];
+
+  // ── listar ────────────────────────────────────────────────────
+  if (sub === 'listar' && !group) {
+    const maps = await mapStore.list(guildId);
+    if (maps.length === 0)
+      return interaction.editReply('📭 Nenhum mapa criado. Use `/mapa criar` para começar.');
+
+    const lines = ['🗺️ **Mapas disponíveis:**', ''];
+    for (const m of maps) {
+      const active = m.id === session.activeMap ? ' ✅ *(ativo)*' : '';
+      lines.push(`• \`${m.id}\` — **${m.name}**${active}`);
+    }
+    lines.push('', 'Use `/mapa carregar id:<id>` para trocar o mapa ativo.');
+    return interaction.editReply(lines.join('\n'));
+  }
+
+  // ── remover ───────────────────────────────────────────────────
+  if (sub === 'remover' && !group) {
+    if (!master)
+      return interaction.editReply('❌ Apenas o Mestre pode remover mapas.');
+
+    const id = interaction.options.getString('id').toLowerCase().trim();
+
+    try {
+      await mapStore.remove(guildId, id);
+    } catch (err) {
+      return interaction.editReply(`❌ ${err.message}`);
+    }
+
+    // Se era o mapa ativo, limpa a referência na sessão
+    if (session.activeMap === id) {
+      session.activeMap    = null;
+      session.mapMessageId = null;
+      session.channelId    = null;
+      await rpgStore.saveSession(guildId, sessionId, session);
+      return interaction.editReply(`🗑️ Mapa \`${id}\` removido.\n⚠️ Era o mapa ativo — use \`/mapa criar\` ou \`/mapa carregar\` para definir um novo.`);
+    }
+
+    return interaction.editReply(`🗑️ Mapa \`${id}\` removido.`);
+  }
+
+  // ── criar ─────────────────────────────────────────────────────
+  if (sub === 'criar' && !group) {
+    if (!master)
+      return interaction.editReply('❌ Apenas o Mestre pode criar mapas.');
+
+    const id      = interaction.options.getString('id').toLowerCase().trim();
+    const nome    = interaction.options.getString('nome').trim();
+    const numCols = interaction.options.getInteger('colunas');
+    const numRows = interaction.options.getInteger('linhas');
+    const padrao  = interaction.options.getString('padrao')?.trim() ?? '⬜';
+
+    if (!validMapId(id))
+      return interaction.editReply('❌ ID inválido. Use apenas letras, números e hífens (ex: `floresta-sombria`).');
+
+    const cols = genCols(numCols);
+    const rows = Array.from({ length: numRows }, (_, i) => i + 1);
+
+    const grid = {};
+    for (const col of cols)
+      for (const row of rows)
+        grid[`${col}${row}`] = padrao;
+
+    const newMap = {
+      id,
+      name:   nome,
+      cols,
+      rows,
+      legend: { [padrao]: 'Terreno padrão' },
+      grid,
+      paths:  {},
+    };
+
+    await mapStore.save(guildId, id, newMap);
+
+    session.activeMap    = id;
+    session.mapMessageId = null;
+    session.channelId    = null;
+
+    const updated = await editMapMessage(interaction, session, newMap);
+    await rpgStore.saveSession(guildId, sessionId, updated);
+
+    const colLabels = cols.join(', ');
+    return interaction.editReply([
+      `✅ Mapa **${nome}** criado — ${numCols} colunas (${colLabels}) × ${numRows} linhas.`,
+      '',
+      `Preencha linha por linha:`,
+      `\`/mapa linha numero:1 tipos:${Array(numCols).fill(padrao).join(',')}\``,
+      '',
+      `Ou altere células individuais:`,
+      `\`/mapa celula pos:A1 tipo:🟥\``,
+      '',
+      `Gerencie a legenda:`,
+      `\`/mapa legenda emoji:🟥 descricao:Chefe\``,
+    ].join('\n'));
+  }
+
+  // ── carregar ──────────────────────────────────────────────────
+  if (sub === 'carregar' && !group) {
+    const id = interaction.options.getString('id').toLowerCase().trim();
+
+    let novoMapa;
+    try {
+      novoMapa = await mapStore.load(guildId, id);
+    } catch {
+      return interaction.editReply(`❌ Mapa \`${id}\` não encontrado. Use \`/mapa listar\` para ver os disponíveis.`);
+    }
+
+    session.activeMap    = id;
+    session.mapMessageId = null;
+    session.channelId    = null;
+
+    const updated = await editMapMessage(interaction, session, novoMapa);
+    await rpgStore.saveSession(guildId, sessionId, updated);
+    return interaction.editReply(`✅ Mapa **${novoMapa.name}** carregado.`);
+  }
+
+  // ── Comandos restantes precisam de mapa ativo ─────────────────
+  if (!session.activeMap) {
+    return interaction.editReply(
+      '❌ Nenhum mapa ativo nesta sessão.\nUse `/mapa criar` para criar um novo ou `/mapa carregar` para carregar um existente.'
+    );
+  }
+
+  let mapData;
+  try {
+    mapData = await mapStore.load(guildId, session.activeMap);
+  } catch {
+    return interaction.editReply(
+      `❌ Mapa ativo \`${session.activeMap}\` não encontrado.\nUse \`/mapa criar\` ou \`/mapa carregar\`.`
+    );
+  }
+
+  // ── Grupo: personagem ─────────────────────────────────────────
   if (group === 'personagem') {
     const emoji = interaction.options.getString('emoji').trim();
 
@@ -244,7 +400,7 @@ async function execute(interaction) {
 
         session.characters[emoji] = { name: nome, pos: local, cover: false, coverNote: '' };
         const updated = await editMapMessage(interaction, session, mapData);
-        await sessionStore.save(guildId, updated);
+        await rpgStore.saveSession(guildId, sessionId, updated);
         await interaction.editReply(`✅ ${emoji} **${nome}** adicionado — *${local}*.`);
         break;
       }
@@ -256,7 +412,7 @@ async function execute(interaction) {
         const nome = session.characters[emoji].name;
         delete session.characters[emoji];
         const updated = await editMapMessage(interaction, session, mapData);
-        await sessionStore.save(guildId, updated);
+        await rpgStore.saveSession(guildId, sessionId, updated);
         await interaction.editReply(`✅ ${emoji} **${nome}** removido do painel.`);
         break;
       }
@@ -268,7 +424,7 @@ async function execute(interaction) {
         const local = interaction.options.getString('local').trim();
         session.characters[emoji].pos = local;
         const updated = await editMapMessage(interaction, session, mapData);
-        await sessionStore.save(guildId, updated);
+        await rpgStore.saveSession(guildId, sessionId, updated);
         await interaction.editReply(`✅ ${emoji} posição atualizada → *${local}*.`);
         break;
       }
@@ -276,22 +432,20 @@ async function execute(interaction) {
     return;
   }
 
-  // ── Subcomandos diretos ──────────────────────────────────────
+  // ── Subcomandos diretos ───────────────────────────────────────
   switch (sub) {
-
-    // ── Comandos existentes ────────────────────────────────────
 
     case 'mostrar': {
       session.mapMessageId = null;
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply('✅ Mapa postado.');
       break;
     }
 
     case 'atualizar': {
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply('✅ Mapa atualizado.');
       break;
     }
@@ -307,7 +461,7 @@ async function execute(interaction) {
 
       session.characters[emoji].pos = cell;
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ ${emoji} movido para **${cell}**.`);
       break;
     }
@@ -329,7 +483,7 @@ async function execute(interaction) {
       }
 
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ Cobertura ${char.cover ? 'ativada' : 'removida'} para ${emoji}.`);
       break;
     }
@@ -346,7 +500,7 @@ async function execute(interaction) {
         enemy.outOfMap = true;
         enemy.pos      = null;
         const updated = await editMapMessage(interaction, session, mapData);
-        await sessionStore.save(guildId, updated);
+        await rpgStore.saveSession(guildId, sessionId, updated);
         await interaction.editReply(`✅ **${enemy.name}** marcado como Fora do Mapa.`);
       } else {
         const cell = pos.toUpperCase();
@@ -355,7 +509,7 @@ async function execute(interaction) {
         enemy.outOfMap = false;
         enemy.pos      = cell;
         const updated = await editMapMessage(interaction, session, mapData);
-        await sessionStore.save(guildId, updated);
+        await rpgStore.saveSession(guildId, sessionId, updated);
         await interaction.editReply(`✅ **${enemy.name}** movido para **${cell}**.`);
       }
       break;
@@ -371,7 +525,7 @@ async function execute(interaction) {
 
       effect.value = valor;
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ **${effect.label}** atualizado para \`${valor}\`.`);
       break;
     }
@@ -386,77 +540,18 @@ async function execute(interaction) {
       mapData.grid[pos] = tipo;
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ Célula **${pos}** alterada para ${tipo}.`);
-      break;
-    }
-
-    // ── Novos comandos de criação ──────────────────────────────
-
-    case 'criar': {
-      const id      = interaction.options.getString('id').toLowerCase().trim();
-      const nome    = interaction.options.getString('nome').trim();
-      const numCols = interaction.options.getInteger('colunas');
-      const numRows = interaction.options.getInteger('linhas');
-      const padrao  = interaction.options.getString('padrao')?.trim() ?? '⬜';
-
-      if (!validMapId(id))
-        return interaction.editReply('❌ ID inválido. Use apenas letras, números e hífens (ex: `floresta-sombria`).');
-
-      const cols = genCols(numCols);                              // ['A','B','C',...]
-      const rows = Array.from({ length: numRows }, (_, i) => i + 1); // [1,2,3,...]
-
-      const grid = {};
-      for (const col of cols)
-        for (const row of rows)
-          grid[`${col}${row}`] = padrao;
-
-      const newMap = {
-        id,
-        name:   nome,
-        cols,
-        rows,
-        legend: { [padrao]: 'Terreno padrão' },
-        grid,
-        paths:  {},
-      };
-
-      await mapStore.save(guildId, id, newMap);
-
-      // Ativa o novo mapa e força nova mensagem
-      session.activeMap    = id;
-      session.mapMessageId = null;
-      session.channelId    = null;
-
-      const updated = await editMapMessage(interaction, session, newMap);
-      await sessionStore.save(guildId, updated);
-
-      const colLabels = cols.join(', ');
-      await interaction.editReply([
-        `✅ Mapa **${nome}** criado — ${numCols} colunas (${colLabels}) × ${numRows} linhas.`,
-        '',
-        `Preencha linha por linha:`,
-        `\`/mapa linha numero:1 tipos:${Array(numCols).fill(padrao).join(',')}\``,
-        '',
-        `Ou altere células individuais:`,
-        `\`/mapa celula pos:A1 tipo:🟥\``,
-        '',
-        `Gerencie a legenda:`,
-        `\`/mapa legenda emoji:🟥 descricao:Chefe\``,
-      ].join('\n'));
       break;
     }
 
     case 'linha': {
       const numero = interaction.options.getInteger('numero');
       const tipos  = interaction.options.getString('tipos')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+        .split(',').map(s => s.trim()).filter(Boolean);
 
       if (!mapData.rows.includes(numero))
         return interaction.editReply(`❌ Linha \`${numero}\` não existe neste mapa (linhas: ${mapData.rows.join(', ')}).`);
-
       if (tipos.length !== mapData.cols.length)
         return interaction.editReply(
           `❌ Esperava **${mapData.cols.length}** tipos (um por coluna: ${mapData.cols.join(', ')}), recebi **${tipos.length}**.`
@@ -467,7 +562,7 @@ async function execute(interaction) {
 
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ Linha **${numero}** preenchida: ${tipos.join(' ')}`);
       break;
     }
@@ -475,13 +570,10 @@ async function execute(interaction) {
     case 'coluna': {
       const letra = interaction.options.getString('letra').toUpperCase().trim();
       const tipos = interaction.options.getString('tipos')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+        .split(',').map(s => s.trim()).filter(Boolean);
 
       if (!mapData.cols.includes(letra))
         return interaction.editReply(`❌ Coluna \`${letra}\` não existe neste mapa (colunas: ${mapData.cols.join(', ')}).`);
-
       if (tipos.length !== mapData.rows.length)
         return interaction.editReply(
           `❌ Esperava **${mapData.rows.length}** tipos (um por linha: ${mapData.rows.join(', ')}), recebi **${tipos.length}**.`
@@ -492,7 +584,7 @@ async function execute(interaction) {
 
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ Coluna **${letra}** preenchida: ${tipos.join(' ')}`);
       break;
     }
@@ -501,9 +593,7 @@ async function execute(interaction) {
       const deRaw  = interaction.options.getString('de').toUpperCase().trim();
       const ateRaw = interaction.options.getString('ate').toUpperCase().trim();
       const tipos  = interaction.options.getString('tipos')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+        .split(',').map(s => s.trim()).filter(Boolean);
 
       const parseCell = c => {
         const m = c.match(/^([A-Z]+)(\d+)$/);
@@ -528,9 +618,9 @@ async function execute(interaction) {
       if (colStart > colEnd || rowStart > rowEnd)
         return interaction.editReply('❌ A célula `de` deve ser o canto superior esquerdo e `ate` o inferior direito.');
 
-      const subCols    = mapData.cols.slice(colStart, colEnd + 1);
-      const subRows    = mapData.rows.slice(rowStart, rowEnd + 1);
-      const esperados  = subCols.length * subRows.length;
+      const subCols   = mapData.cols.slice(colStart, colEnd + 1);
+      const subRows   = mapData.rows.slice(rowStart, rowEnd + 1);
+      const esperados = subCols.length * subRows.length;
 
       if (tipos.length !== esperados)
         return interaction.editReply(
@@ -544,10 +634,8 @@ async function execute(interaction) {
 
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
-      await interaction.editReply(
-        `✅ Submatriz **${deRaw}→${ateRaw}** (${subCols.length}×${subRows.length}) preenchida.`
-      );
+      await rpgStore.saveSession(guildId, sessionId, updated);
+      await interaction.editReply(`✅ Submatriz **${deRaw}→${ateRaw}** (${subCols.length}×${subRows.length}) preenchida.`);
       break;
     }
 
@@ -555,12 +643,12 @@ async function execute(interaction) {
       const emoji     = interaction.options.getString('emoji').trim();
       const descricao = interaction.options.getString('descricao').trim();
 
-      mapData.legend         = mapData.legend ?? {};
-      mapData.legend[emoji]  = descricao;
+      mapData.legend        = mapData.legend ?? {};
+      mapData.legend[emoji] = descricao;
 
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ Legenda: ${emoji} → **${descricao}**`);
       break;
     }
@@ -571,30 +659,10 @@ async function execute(interaction) {
 
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
-      await sessionStore.save(guildId, updated);
+      await rpgStore.saveSession(guildId, sessionId, updated);
 
       const label = mapData.emojisNoGrid ? 'Apenas no texto abaixo' : 'Visível no grid';
       await interaction.editReply(`✅ Personagens no grid: **${label}**`);
-      break;
-    }
-
-    case 'carregar': {
-      const id = interaction.options.getString('id').toLowerCase().trim();
-
-      let novoMapa;
-      try {
-        novoMapa = await mapStore.load(guildId, id);
-      } catch {
-        return interaction.editReply(`❌ Mapa \`${id}\` não encontrado.`);
-      }
-
-      session.activeMap    = id;
-      session.mapMessageId = null;
-      session.channelId    = null;
-
-      const updated = await editMapMessage(interaction, session, novoMapa);
-      await sessionStore.save(guildId, updated);
-      await interaction.editReply(`✅ Mapa **${novoMapa.name}** carregado.`);
       break;
     }
 

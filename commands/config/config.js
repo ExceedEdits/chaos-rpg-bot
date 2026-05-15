@@ -4,7 +4,6 @@
 // ============================================================
 
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
-const sessionStore       = require('../../utils/sessionStore');
 const rpgStore           = require('../../utils/rpgSessionStore');
 const { resolveOrReply } = require('../../utils/sessionResolver');
 const { setPrefix }      = require('../../utils/prefixStore');
@@ -81,14 +80,13 @@ async function execute(interaction) {
 
   // ── ver ────────────────────────────────────────────────────
   if (sub === 'ver') {
-    const session    = await sessionStore.load(guildId);
     const rpgSession = (await rpgStore.resolveSession(guildId, interaction.channelId))?.session;
     const settings   = rpgSession?.settings ?? {};
     const { getPrefix } = require('../../utils/prefixStore');
     const prefix     = await getPrefix(guildId);
 
-    const mapCh      = session.channelId              ? `<#${session.channelId}>`                      : '*canal do comando*';
-    const trackCh    = rpgSession?.trackerChannelId   ? `<#${rpgSession.trackerChannelId}>`            : '*canal do comando*';
+    const mapCh      = rpgSession?.channelId         ? `<#${rpgSession.channelId}>`                   : '*canal do comando*';
+    const trackCh    = rpgSession?.trackerChannelId  ? `<#${rpgSession.trackerChannelId}>`            : '*canal do comando*';
     const trackFixed = settings.trackerFixed          ? 'Sim (mensagem fixa)'                         : 'Nao (nova por turno)';
     const decr       = settings.decrementMode === 'turn' ? 'Por turno'                                : 'Por rodada';
 
@@ -126,11 +124,14 @@ async function execute(interaction) {
     const canal   = interaction.options.getChannel('canal');
 
     if (destino === 'mapa') {
-      // Canal do mapa vive na sessão simples (sessionStore)
-      const session = await sessionStore.load(guildId);
+      // Canal do mapa vive na sessão RPG
+      const resolved = await resolveOrReply(interaction);
+      if (!resolved) return;
+
+      const { session, sessionId } = resolved;
       session.channelId    = canal.id;
       session.mapMessageId = null; // força nova mensagem no novo canal
-      await sessionStore.save(guildId, session);
+      await rpgStore.saveSession(guildId, sessionId, session);
       await interaction.editReply(`✅ Canal do **mapa** definido como <#${canal.id}>.\nA próxima atualização do mapa será postada lá.`);
       return;
     }
