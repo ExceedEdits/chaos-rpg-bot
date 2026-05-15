@@ -42,7 +42,10 @@ const data = new SlashCommandBuilder()
     .addIntegerOption(o => o
       .setName('valor')
       .setDescription('Valor do efeito por rodada (obrigatório se efeito definido)')
-      .setMinValue(1)))
+      .setMinValue(1))
+    .addStringOption(o => o
+      .setName('fonte')
+      .setDescription('Origem do status: nome de personagem, NPC ou nota livre (ex: Aranha Venenosa)')))
 
   // remover
   .addSubcommand(s => s
@@ -88,6 +91,7 @@ async function execute(interaction) {
     const duracao  = interaction.options.getInteger('duracao') ?? null;
     const efeito   = interaction.options.getString('efeito')   ?? null;
     const valor    = interaction.options.getInteger('valor')   ?? null;
+    const fonteOpt = interaction.options.getString('fonte')    ?? null;
     const id       = toId(label);
 
     // Valida: efeito sem valor
@@ -99,16 +103,18 @@ async function execute(interaction) {
     // Remove versão anterior do mesmo status se existir
     char.statuses = char.statuses.filter(s => s.id !== id);
 
-    // Tenta encontrar o personagem do autor para registrar como fonte
-    const allChars  = await characterStore.getAll(guildId);
+    // Resolve a fonte: campo explícito > personagem ativo do autor > null
+    const allChars   = await characterStore.getAll(guildId);
     const sourceChar = allChars.find(c => c.discordId === interaction.user.id);
+    const source     = fonteOpt ?? sourceChar?.name ?? null;
 
     const status = {
       id,
       label,
       duration: duracao,
       effect:   efeito ? { type: efeito, value: valor } : null,
-      sourceId: sourceChar?.id ?? null,
+      source,                          // texto livre para exibição
+      sourceId: sourceChar?.id ?? null, // ID interno para o tracker
     };
 
     char.statuses.push(status);

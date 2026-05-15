@@ -83,6 +83,7 @@ function formatStatuses(char) {
                  : s.effect.type === 'cura' ? '💚' : '🛡️';
       line += ` · ${icon} ${s.effect.value} ${s.effect.type}/rodada`;
     }
+    if (s.source) line += ` · *por: ${s.source}*`;
     return line;
   }).join('\n');
 }
