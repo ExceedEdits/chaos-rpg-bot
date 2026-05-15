@@ -1,59 +1,108 @@
 // ============================================================
 //  Chaos RPG Bot — Map Renderer
-//  Converte session.json + mapa base → string de emojis Discord
+//  Converte mapData + session → string formatada para Discord.
 // ============================================================
 
 /**
- * Renderiza o estado completo do mapa como texto formatado para Discord.
+ * Renderiza o mapa completo com todos os painéis laterais.
  *
- * @param {object} mapData   - Conteúdo de data/maps/<id>.json
- * @param {object} session   - Conteúdo de data/session.json
- * @returns {string}         - Mensagem pronta para postar/editar no Discord
+ * Layout:
+ *   ## Rodada N
+ *   [grid]
+ *   **Legenda:**
+ *   **Personagens:**
+ *   **NPCs:**
+ *   **Inimigos:**
+ *   **Estruturas/Itens/Criaturas:**
+ *
+ * @param {object} mapData  - Dados do mapa (cols, rows, grid, legend…)
+ * @param {object} session  - Estado da sessão RPG
+ * @returns {string}
  */
 function renderMap(mapData, session) {
   const lines = [];
 
-  // ── Cabeçalho de colunas ────────────────────────────────────
-  const colHeader = '⬛' + mapData.cols.map(c => `\`${c}\``).join('');
-  lines.push(colHeader);
+  // ── Cabeçalho de rodada ───────────────────────────────────────
+  const combat = session.combat ?? {};
+  const round  = (combat.active && combat.round > 0) ? combat.round : null;
+  lines.push(round ? `## Rodada ${round}` : '## Mapa');
+  lines.push('');
 
-  // ── Grid ────────────────────────────────────────────────────
+  // ── Cabeçalho de colunas (sem formatação de código) ───────────
+  lines.push('⬛' + mapData.cols.join(''));
+
+  // ── Grid ─────────────────────────────────────────────────────
   for (const row of mapData.rows) {
-    let rowStr = `\`${row}\``;
+    let rowStr = `${row}`;
 
     for (const col of mapData.cols) {
-      const cell = `${col}${row}`;
+      const cell      = `${col}${row}`;
       const baseEmoji = mapData.grid[cell] ?? '⬛';
 
-      // Personagens na célula (omitido quando emojisNoGrid está ativo)
+      // Emojis de personagens na célula (desativável via /mapa config)
       const chars = mapData.emojisNoGrid
         ? []
         : Object.entries(session.characters ?? {})
             .filter(([, c]) => c.pos === cell)
             .map(([emoji]) => emoji);
 
-      // NPCs na célula
-      const npcs = Object.entries(session.npcs ?? {})
-        .filter(([, n]) => n.pos === cell)
-        .map(([name]) => name[0]); // primeira letra como indicador
+      // NPCs do mapa na célula
+      const hasNpc = Object.values(session.npcs ?? {})
+        .some(n => n.pos === cell);
 
-      if (chars.length > 0) {
-        rowStr += chars.join('');
-      } else if (npcs.length > 0) {
-        rowStr += '🔵'; // NPC genérico
-      } else {
-        rowStr += baseEmoji;
-      }
+      if (chars.length > 0) rowStr += chars.join('');
+      else if (hasNpc)      rowStr += '🔵';
+      else                  rowStr += baseEmoji;
     }
 
     lines.push(rowStr);
   }
 
-  // ── Legenda ─────────────────────────────────────────────────
+  // ── Legenda ───────────────────────────────────────────────────
   lines.push('');
   lines.push('**Legenda:**');
   for (const [emoji, desc] of Object.entries(mapData.legend ?? {})) {
     lines.push(`${emoji} ${desc}`);
+  }
+
+  // ── Personagens ───────────────────────────────────────────────
+  lines.push('');
+  lines.push('**Personagens:**');
+  for (const [emoji, char] of Object.entries(session.characters ?? {})) {
+    let line = `${emoji} **${char.name}** — ${char.pos}`;
+    if (char.cover) line += char.coverNote ? ` *(${char.coverNote})*` : ' *(Cobertura)*';
+    lines.push(line);
+  }
+
+  // ── NPCs ─────────────────────────────────────────────────────
+  lines.push('');
+  lines.push('**NPCs:**');
+  for (const [name, npc] of Object.entries(session.npcs ?? {})) {
+    let line = `🔵 **${name}** — ${npc.pos}`;
+    if (npc.movingTo) line += ` → ${npc.movingTo}`;
+    lines.push(line);
+  }
+
+  // ── Inimigos (no mapa + fora) ─────────────────────────────────
+  lines.push('');
+  lines.push('**Inimigos:**');
+  for (const e of session.enemies ?? []) {
+    if (e.outOfMap) {
+      lines.push(`— **${e.name}** ×${e.qty} *(Fora do Mapa)*`);
+    } else {
+      lines.push(`— **${e.name}** ×${e.qty} — ${e.pos}`);
+    }
+  }
+
+  // ── Estruturas/Itens/Criaturas ────────────────────────────────
+  lines.push('');
+  lines.push('**Estruturas/Itens/Criaturas:**');
+  for (const [cell, itemList] of Object.entries(session.items ?? {})) {
+    for (const item of itemList) {
+      let line = `📦 **${item.label}** ×${item.qty} — ${cell}`;
+      if (item.cover) line += item.coverNote ? ` *(${item.coverNote})*` : ' *(Cobertura)*';
+      lines.push(line);
+    }
   }
 
   return lines.join('\n');
