@@ -187,15 +187,34 @@ const data = new SlashCommandBuilder()
 
   .addSubcommand(s => s
     .setName('config')
-    .setDescription('Configura opções visuais do mapa ativo')
+    .setDescription('Configura opções visuais e painéis do mapa ativo')
     .addStringOption(o => o
       .setName('emojis')
-      .setDescription('Como exibir os personagens no grid')
-      .setRequired(true)
+      .setDescription('Personagens aparecem no grid ou só na lista abaixo')
       .addChoices(
         { name: 'Mostrar no grid',        value: 'grid'  },
         { name: 'Apenas no texto abaixo', value: 'texto' },
-      )))
+      ))
+    .addStringOption(o => o
+      .setName('legenda')
+      .setDescription('Exibir painel de legenda')
+      .addChoices({ name: 'Mostrar', value: 'sim' }, { name: 'Ocultar', value: 'nao' }))
+    .addStringOption(o => o
+      .setName('personagens')
+      .setDescription('Exibir painel de personagens')
+      .addChoices({ name: 'Mostrar', value: 'sim' }, { name: 'Ocultar', value: 'nao' }))
+    .addStringOption(o => o
+      .setName('npcs')
+      .setDescription('Exibir painel de NPCs')
+      .addChoices({ name: 'Mostrar', value: 'sim' }, { name: 'Ocultar', value: 'nao' }))
+    .addStringOption(o => o
+      .setName('inimigos')
+      .setDescription('Exibir painel de inimigos')
+      .addChoices({ name: 'Mostrar', value: 'sim' }, { name: 'Ocultar', value: 'nao' }))
+    .addStringOption(o => o
+      .setName('estruturas')
+      .setDescription('Exibir painel de estruturas/itens/criaturas')
+      .addChoices({ name: 'Mostrar', value: 'sim' }, { name: 'Ocultar', value: 'nao' })))
 
   .addSubcommandGroup(g => g
     .setName('personagem')
@@ -656,15 +675,44 @@ async function execute(interaction) {
     }
 
     case 'config': {
-      const emojis = interaction.options.getString('emojis');
-      mapData.emojisNoGrid = emojis === 'texto';
+      const emojis      = interaction.options.getString('emojis');
+      const legenda     = interaction.options.getString('legenda');
+      const personagens = interaction.options.getString('personagens');
+      const npcs        = interaction.options.getString('npcs');
+      const inimigos    = interaction.options.getString('inimigos');
+      const estruturas  = interaction.options.getString('estruturas');
+
+      if ([emojis, legenda, personagens, npcs, inimigos, estruturas].every(v => v === null))
+        return interaction.editReply('❌ Especifique ao menos uma opção para alterar.');
+
+      mapData.panels = mapData.panels ?? {};
+      const changed  = [];
+
+      if (emojis !== null) {
+        mapData.emojisNoGrid = emojis === 'texto';
+        changed.push(`• Personagens no grid: **${emojis === 'texto' ? 'Apenas na lista' : 'Visível no grid'}**`);
+      }
+
+      const panelMap = { legenda, personagens, npcs, inimigos, estruturas };
+      const panelLabel = {
+        legenda:     'Legenda',
+        personagens: 'Personagens',
+        npcs:        'NPCs',
+        inimigos:    'Inimigos',
+        estruturas:  'Estruturas/Itens/Criaturas',
+      };
+
+      for (const [key, val] of Object.entries(panelMap)) {
+        if (val !== null) {
+          mapData.panels[key] = val === 'sim';
+          changed.push(`• ${panelLabel[key]}: **${val === 'sim' ? 'Visível' : 'Oculto'}**`);
+        }
+      }
 
       await mapStore.save(guildId, session.activeMap, mapData);
       const updated = await editMapMessage(interaction, session, mapData);
       await rpgStore.saveSession(guildId, sessionId, updated);
-
-      const label = mapData.emojisNoGrid ? 'Apenas no texto abaixo' : 'Visível no grid';
-      await interaction.editReply(`✅ Personagens no grid: **${label}**`);
+      await interaction.editReply(`✅ **Mapa configurado:**\n${changed.join('\n')}`);
       break;
     }
 
