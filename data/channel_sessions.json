@@ -1,1 +1,14 @@
-{ "channels": [] }
+{
+  "channels": [
+    {
+      "channelId": "1107412137120366685",
+      "guildId": "1107412136264749158",
+      "sessionId": "akuma-nights"
+    },
+    {
+      "channelId": "967643375035625485",
+      "guildId": "967643375035625482",
+      "sessionId": "unity"
+    }
+  ]
+}

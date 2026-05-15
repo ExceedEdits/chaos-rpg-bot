@@ -1,7 +1,7 @@
 {
-  "activeMap": "mar_profundo",
-  "mapMessageId": null,
-  "channelId": null,
+  "activeMap": "the-black-cat",
+  "mapMessageId": "1504650895785459803",
+  "channelId": "1107412137120366685",
   "turnEffects": [
     {
       "id": "nivel_mar",
@@ -12,26 +12,69 @@
     }
   ],
   "characters": {
-    "💀": { "name": "Personagem 1", "pos": "B3", "cover": false },
-    "🔥": { "name": "Personagem 2", "pos": "B3", "cover": true, "coverNote": "Sob Cobertura na Concha" },
-    "🥷": { "name": "Personagem 3", "pos": "C3", "cover": false },
-    "🌊": { "name": "Personagem 4", "pos": "B3", "cover": true, "coverNote": "Sob Cobertura na Concha" },
-    "☠️": { "name": "Personagem 5", "pos": "D3", "cover": false },
-    "🧜‍♀️": { "name": "Personagem 6", "pos": "B3", "cover": true, "coverNote": "Sob Cobertura na Concha" }
+    "🔥": {
+      "name": "Personagem 2",
+      "pos": "B3",
+      "cover": true,
+      "coverNote": "Sob Cobertura na Concha"
+    },
+    "🌊": {
+      "name": "Personagem 4",
+      "pos": "B3",
+      "cover": true,
+      "coverNote": "Sob Cobertura na Concha"
+    },
+    "🧜‍♀️": {
+      "name": "Personagem 6",
+      "pos": "B3",
+      "cover": true,
+      "coverNote": "Sob Cobertura na Concha"
+    }
   },
   "npcs": {
-    "Liza": { "pos": "B2", "movingTo": "B1" }
+    "Liza": {
+      "pos": "B2",
+      "movingTo": "B1"
+    }
   },
   "enemies": [
-    { "name": "Watcher", "qty": 1, "pos": "F3", "outOfMap": false },
-    { "name": "Husk",    "qty": 2, "pos": null,  "outOfMap": true  },
-    { "name": "Hati",    "qty": 1, "pos": "B3",  "outOfMap": false },
-    { "name": "Miasma",  "qty": 1, "pos": "F3",  "outOfMap": false }
+    {
+      "name": "Watcher",
+      "qty": 1,
+      "pos": "F3",
+      "outOfMap": false
+    },
+    {
+      "name": "Husk",
+      "qty": 2,
+      "pos": null,
+      "outOfMap": true
+    },
+    {
+      "name": "Hati",
+      "qty": 1,
+      "pos": "B3",
+      "outOfMap": false
+    },
+    {
+      "name": "Miasma",
+      "qty": 1,
+      "pos": "F3",
+      "outOfMap": false
+    }
   ],
   "items": {
     "B3": [
-      { "label": "Concha", "qty": 4 },
-      { "label": "Raia",   "qty": 1, "cover": true, "coverNote": "Sob Cobertura na Concha" }
+      {
+        "label": "Concha",
+        "qty": 4
+      },
+      {
+        "label": "Raia",
+        "qty": 1,
+        "cover": true,
+        "coverNote": "Sob Cobertura na Concha"
+      }
     ]
   }
 }

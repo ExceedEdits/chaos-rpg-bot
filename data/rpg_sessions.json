@@ -1,1 +1,93 @@
-{ "sessions": [] }
+{
+  "sessions": [
+    {
+      "guildId": "1107412136264749158",
+      "sessionId": "akuma-nights",
+      "activeMap": "mar_profundo",
+      "mapMessageId": null,
+      "channelId": null,
+      "turnEffects": [],
+      "characters": {},
+      "npcs": {},
+      "enemies": [],
+      "items": {},
+      "combat": {
+        "active": false,
+        "round": 0,
+        "current": 0,
+        "order": []
+      },
+      "settings": {
+        "showStatusInTracker": false,
+        "showEffectsApplying": true,
+        "decrementMode": "round",
+        "trackerFixed": false
+      }
+    },
+    {
+      "guildId": "967643375035625482",
+      "sessionId": "unity",
+      "masterId": "290340339720650764",
+      "online": false,
+      "activeMap": "unity",
+      "mapMessageId": "1504675171515109440",
+      "channelId": "967643375035625485",
+      "turnEffects": [],
+      "characters": {
+        "💧": {
+          "name": "ada",
+          "pos": "B3",
+          "cover": false,
+          "coverNote": ""
+        },
+        "🐉": {
+          "name": "kinich",
+          "pos": "C3",
+          "cover": false,
+          "coverNote": ""
+        },
+        "👮": {
+          "name": "guarda 1",
+          "pos": "D4",
+          "cover": false,
+          "coverNote": ""
+        }
+      },
+      "npcs": {},
+      "enemies": [],
+      "items": {},
+      "combat": {
+        "active": true,
+        "round": 3,
+        "current": 0,
+        "order": [
+          {
+            "charId": "kinich",
+            "name": "kinich",
+            "emoji": null,
+            "team": null,
+            "initiative": 9,
+            "discordId": "290340339720650764",
+            "slotKey": "fzilf8"
+          },
+          {
+            "charId": "ada",
+            "name": "ada",
+            "emoji": "💧",
+            "team": "🟢",
+            "initiative": 8,
+            "discordId": "290340339720650764",
+            "slotKey": "v2juvw"
+          }
+        ]
+      },
+      "settings": {
+        "showStatusInTracker": true,
+        "showEffectsApplying": true,
+        "decrementMode": "round",
+        "trackerFixed": false
+      },
+      "trackerMessageId": null
+    }
+  ]
+}

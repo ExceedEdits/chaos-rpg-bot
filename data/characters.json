@@ -1,4 +1,135 @@
 {
-  "_comment": "Personagens para teste local. Em produção, use MongoDB.",
-  "characters": []
+  "characters": [
+    {
+      "name": "ada",
+      "emoji": "💧",
+      "team": "🟢",
+      "discordId": "290340339720650764",
+      "hp": 65,
+      "hpMax": 65,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": true,
+      "critThreshold": 15,
+      "overheal": "cap",
+      "statuses": [
+        {
+          "id": "triunfada",
+          "label": "triunfada",
+          "duration": null,
+          "effect": null,
+          "sourceId": "ada"
+        }
+      ],
+      "id": "ada"
+    },
+    {
+      "name": "kinich",
+      "emoji": null,
+      "team": null,
+      "discordId": "290340339720650764",
+      "hp": 94,
+      "hpMax": 100,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": false,
+      "critThreshold": 0,
+      "overheal": "cap",
+      "statuses": [
+        {
+          "id": "veneno",
+          "label": "veneno",
+          "duration": 1,
+          "effect": {
+            "type": "dano",
+            "value": 3
+          },
+          "sourceId": "ada"
+        },
+        {
+          "id": "debuff",
+          "label": "debuff",
+          "duration": null,
+          "effect": null,
+          "sourceId": "ada"
+        }
+      ],
+      "id": "kinich"
+    },
+    {
+      "name": "guarda",
+      "emoji": "👮",
+      "team": null,
+      "discordId": null,
+      "hp": 15,
+      "hpMax": 15,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": false,
+      "critThreshold": 0,
+      "overheal": "cap",
+      "statuses": [],
+      "id": "guarda"
+    },
+    {
+      "name": "guarda 1",
+      "emoji": "👮",
+      "team": null,
+      "discordId": null,
+      "hp": 15,
+      "hpMax": 15,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": false,
+      "critThreshold": 0,
+      "overheal": "cap",
+      "statuses": [],
+      "id": "guarda_1"
+    },
+    {
+      "name": "guarda 2",
+      "emoji": "👮",
+      "team": null,
+      "discordId": null,
+      "hp": 15,
+      "hpMax": 15,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": false,
+      "critThreshold": 0,
+      "overheal": "cap",
+      "statuses": [],
+      "id": "guarda_2"
+    },
+    {
+      "name": "guarda 3",
+      "emoji": "👮",
+      "team": null,
+      "discordId": null,
+      "hp": 15,
+      "hpMax": 15,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": false,
+      "critThreshold": 0,
+      "overheal": "cap",
+      "statuses": [],
+      "id": "guarda_3"
+    },
+    {
+      "name": "guarda 4",
+      "emoji": "👮",
+      "team": null,
+      "discordId": null,
+      "hp": 15,
+      "hpMax": 15,
+      "shield": 0,
+      "shieldMax": 0,
+      "salvaguarda": false,
+      "critThreshold": 0,
+      "overheal": "cap",
+      "statuses": [],
+      "id": "guarda_4"
+    }
+  ]
 }
