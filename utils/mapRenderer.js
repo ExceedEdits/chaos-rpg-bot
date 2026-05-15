@@ -17,6 +17,18 @@
  * @param {object} session
  * @returns {string}
  */
+/**
+ * Converte um único caractere letra em emoji de indicador regional (🇦–🇿).
+ * Para não-letras retorna o valor sem alteração.
+ */
+function toRegional(char) {
+  const code = char.toUpperCase().charCodeAt(0);
+  if (code >= 65 && code <= 90) {
+    return String.fromCodePoint(0x1F1E6 + code - 65);
+  }
+  return char;
+}
+
 function renderMap(mapData, session) {
   // ── Visibilidade dos painéis ──────────────────────────────────
   const p = mapData.panels ?? {};
@@ -44,7 +56,8 @@ function renderMap(mapData, session) {
     ?? Object.keys(mapData.legend ?? {})[0]
     ?? '⬛';
 
-  lines.push(defaultTerrain + ' ' + mapData.cols.map(c => `\`${c}\``).join(' '));
+  // Cabeçalho: `x` | 🇦 | 🇧 | 🇨 ...
+  lines.push(['`x`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
@@ -82,14 +95,11 @@ function renderMap(mapData, session) {
       }
     }
 
-    rowLines.push(`\`${row}\` ` + cells.join(' '));
+    // Linha: `1` | 🟦 | 🟦 | ...
+    rowLines.push(['`' + row + '`', ...cells].join(' | '));
   }
 
-  // Insere linha em branco entre cada linha do grid (respiro vertical)
-  for (let i = 0; i < rowLines.length; i++) {
-    lines.push(rowLines[i]);
-    if (i < rowLines.length - 1) lines.push('');
-  }
+  for (const rowLine of rowLines) lines.push(rowLine);
 
   // ── Legenda ───────────────────────────────────────────────────
   if (show.legenda) {
