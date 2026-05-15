@@ -44,7 +44,7 @@ function renderMap(mapData, session) {
     ?? Object.keys(mapData.legend ?? {})[0]
     ?? '⬛';
 
-  lines.push(defaultTerrain + mapData.cols.map(c => `\`${c}\``).join(''));
+  lines.push(defaultTerrain + ' ' + mapData.cols.map(c => `\`${c}\``).join(' '));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
@@ -63,8 +63,9 @@ function renderMap(mapData, session) {
       .map(n => n.pos)
   );
 
+  const rowLines = [];
   for (const row of mapData.rows) {
-    let rowStr = `\`${row}\``;
+    const cells = [];
 
     for (const col of mapData.cols) {
       const cell      = `${col}${row}`;
@@ -73,15 +74,21 @@ function renderMap(mapData, session) {
       const charsHere = charByCell[cell];
       if (charsHere?.length > 0) {
         // Exatamente 1 emoji — preserva a largura da célula
-        rowStr += charsHere[0];
+        cells.push(charsHere[0]);
       } else if (npcCells.has(cell)) {
-        rowStr += '🔵';
+        cells.push('🔵');
       } else {
-        rowStr += baseEmoji;
+        cells.push(baseEmoji);
       }
     }
 
-    lines.push(rowStr);
+    rowLines.push(`\`${row}\` ` + cells.join(' '));
+  }
+
+  // Insere linha em branco entre cada linha do grid (respiro vertical)
+  for (let i = 0; i < rowLines.length; i++) {
+    lines.push(rowLines[i]);
+    if (i < rowLines.length - 1) lines.push('');
   }
 
   // ── Legenda ───────────────────────────────────────────────────
