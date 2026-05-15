@@ -37,7 +37,7 @@ function renderMap(mapData, session) {
   lines.push('');
 
   // ── Cabeçalho de colunas ──────────────────────────────────────
-  lines.push('⬛' + mapData.cols.join(''));
+  lines.push('⬛' + mapData.cols.map(c => `\`${c}\``).join(''));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
@@ -57,7 +57,7 @@ function renderMap(mapData, session) {
   );
 
   for (const row of mapData.rows) {
-    let rowStr = `${row}`;
+    let rowStr = `\`${row}\``;
 
     for (const col of mapData.cols) {
       const cell      = `${col}${row}`;
