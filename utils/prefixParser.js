@@ -7,13 +7,28 @@
 
 // Comandos que usam subgrupos (dois níveis: grupo + subcomando)
 const SUBCOMMAND_GROUPS = {
-  mapa: ['personagem'],
+  mapa: ['personagem', 'npc', 'inimigo', 'item'],
 };
 
 // Comandos que NÃO têm subcomandos (todos os tokens após o nome são opções)
 const COMMANDS_WITHOUT_SUBCOMMANDS = new Set([
   'dano', 'curar', 'escudo', 'vida',
+  // Música — nenhum tem subcomando
+  'play', 'p', 'pause', 'resume', 'skip', 'stop',
+  'queue', 'remove', 'clear', 'shuffle', 'restart', 'back',
 ]);
+
+// Argumento posicional: quando o comando aceita um valor solto sem chave:valor,
+// ele é mapeado automaticamente para a opção correta.
+// Ex: "!play thunderstruck" → options.query = "thunderstruck"
+//     "!remove 3"           → options.posicao = "3"
+//     "!queue 2"            → options.pagina  = "2"
+const POSITIONAL_ARG = {
+  play:   'query',
+  p:      'query',
+  remove: 'posicao',
+  queue:  'pagina',
+};
 
 /**
  * Tokeniza uma string respeitando aspas duplas.
@@ -76,6 +91,14 @@ function parseCommand(content, prefix) {
   if (COMMANDS_WITHOUT_SUBCOMMANDS.has(cmd) || cmd === 'rolar') {
     const rest    = after.slice(cmd.length).trim();
     const options = parseOptions(rest);
+
+    // Argumento posicional: se não veio nenhum key:value mas há texto solto,
+    // usa o texto inteiro como valor da opção principal do comando.
+    const positionalKey = POSITIONAL_ARG[cmd];
+    if (positionalKey && !options[positionalKey] && rest) {
+      options[positionalKey] = rest;
+    }
+
     return { cmd, group: null, subcommand: null, options, rest };
   }
 

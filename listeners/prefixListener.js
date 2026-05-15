@@ -38,6 +38,7 @@ function buildHelp(commands, prefix) {
     '🎲 Dados':    ['rolar', 'tag'],
     '⚔️ Combate':  ['turno', 'iniciativa', 'status', 'dano', 'curar', 'escudo', 'vida', 'personagem', 'npc'],
     '🗺️ Mapa':     ['mapa'],
+    '🎵 Música':   ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'clear', 'shuffle'],
     '⚙️ Config':   ['config', 'rpg'],
   };
 
@@ -136,7 +137,11 @@ function registerPrefixListener(client) {
       const parsed = parseCommand(raw, prefix);
       if (!parsed) return;
 
-      const { cmd, group, subcommand, options, rest } = parsed;
+      // Resolve aliases antes de procurar o handler
+      // Ex: "p" → "play"
+      const ALIASES = { p: 'play' };
+      const { group, subcommand, options, rest } = parsed;
+      const cmd = ALIASES[parsed.cmd] ?? parsed.cmd;
 
       // ── !rolar (ou qualquer dado) ──────────────────────────
       if (cmd === 'rolar') {
