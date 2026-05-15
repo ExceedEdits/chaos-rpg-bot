@@ -6,7 +6,7 @@
 
 const { SlashCommandBuilder } = require('discord.js');
 const rpgStore               = require('../../utils/rpgSessionStore');
-const { resolveOrReply }     = require('../../utils/sessionResolver');
+const { resolveOrReply, isSessionMaster } = require('../../utils/sessionResolver');
 const mapStore               = require('../../utils/mapStore');
 const { renderMap }          = require('../../utils/mapRenderer');
 
@@ -48,9 +48,9 @@ function validMapId(id) {
   return /^[\w-]+$/.test(id);
 }
 
-function isMaster(member) {
-  return member.permissions.has('Administrator')
-      || member.roles.cache.some(r => r.name === (process.env.MASTER_ROLE ?? 'Mestre'));
+// Wrapper local para verificar dono da sessão
+function checkSessionMaster(interaction, session) {
+  return isSessionMaster(interaction.member, session);
 }
 
 // ── Definição do comando ──────────────────────────────────────
@@ -238,7 +238,6 @@ async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const group   = interaction.options.getSubcommandGroup(false);
   const guildId = interaction.guildId;
-  const master  = isMaster(interaction.member);
 
   await interaction.deferReply({ ephemeral: true });
 
@@ -253,6 +252,9 @@ async function execute(interaction) {
   session.enemies     = session.enemies     ?? [];
   session.items       = session.items       ?? {};
   session.turnEffects = session.turnEffects ?? [];
+
+  // Permissão: dono da sessão ou admin
+  const isOwner = checkSessionMaster(interaction, session);
 
   // ── listar ────────────────────────────────────────────────────
   if (sub === 'listar' && !group) {
@@ -271,8 +273,8 @@ async function execute(interaction) {
 
   // ── remover ───────────────────────────────────────────────────
   if (sub === 'remover' && !group) {
-    if (!master)
-      return interaction.editReply('❌ Apenas o Mestre pode remover mapas.');
+    if (!isOwner)
+      return interaction.editReply('❌ Apenas o Mestre dono desta sessão pode remover mapas.');
 
     const id = interaction.options.getString('id').toLowerCase().trim();
 
@@ -296,8 +298,8 @@ async function execute(interaction) {
 
   // ── criar ─────────────────────────────────────────────────────
   if (sub === 'criar' && !group) {
-    if (!master)
-      return interaction.editReply('❌ Apenas o Mestre pode criar mapas.');
+    if (!isOwner)
+      return interaction.editReply('❌ Apenas o Mestre dono desta sessão pode criar mapas.');
 
     const id      = interaction.options.getString('id').toLowerCase().trim();
     const nome    = interaction.options.getString('nome').trim();

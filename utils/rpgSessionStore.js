@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_SESSION = {
+  masterId:     null,   // Discord user ID do criador da sessão
+  online:       true,   // true = ativa | false = offline
   activeMap:    null,
   mapMessageId: null,
   channelId:    null,
@@ -187,6 +189,18 @@ async function clearChannelSession(channelId) {
   await channels.deleteOne({ _id: channelId });
 }
 
+/** Remove todos os vínculos de canal de uma sessão (usado ao deletar a sessão) */
+async function clearSessionChannels(guildId, sessionId) {
+  if (USE_LOCAL) {
+    writeLocalChannels(
+      readLocalChannels().filter(c => !(c.guildId === guildId && c.sessionId === sessionId))
+    );
+    return;
+  }
+  const { channels } = await col();
+  await channels.deleteMany({ guildId, sessionId });
+}
+
 /**
  * Resolve a sessão ativa para uma interação.
  * Retorna { session, sessionId } ou null se não houver sessão vinculada.
@@ -201,5 +215,5 @@ async function resolveSession(guildId, channelId) {
 module.exports = {
   DEFAULT_SETTINGS,
   listSessions, createSession, loadSession, saveSession, deleteSession,
-  getChannelSession, setChannelSession, clearChannelSession, resolveSession,
+  getChannelSession, setChannelSession, clearChannelSession, clearSessionChannels, resolveSession,
 };
