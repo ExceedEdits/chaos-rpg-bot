@@ -63,6 +63,21 @@ const data = new SlashCommandBuilder()
   .addSubcommand(s => s.setName('listar').setDescription('Lista todos os mapas disponíveis nesta sessão'))
 
   .addSubcommand(s => s
+    .setName('terreno')
+    .setDescription('Define o terreno padrão do mapa (dono da sessão)')
+    .addStringOption(o => o
+      .setName('emoji')
+      .setDescription('Novo emoji de terreno padrão (ex: 🟩)')
+      .setRequired(true))
+    .addStringOption(o => o
+      .setName('substituir')
+      .setDescription('Substituir todas as células que usam o terreno antigo?')
+      .addChoices(
+        { name: 'Sim — atualiza o grid inteiro', value: 'sim' },
+        { name: 'Não — só altera a legenda',     value: 'nao' },
+      )))
+
+  .addSubcommand(s => s
     .setName('remover')
     .setDescription('Remove um mapa permanentemente (Mestre)')
     .addStringOption(o => o
@@ -537,9 +552,9 @@ async function execute(interaction) {
     }
 
     case 'efeito': {
-      const id     = interaction.options.getString('id');
+      const id     = interaction.options.getString('id').toLowerCase().trim();
       const valor  = interaction.options.getNumber('valor');
-      const effect = session.turnEffects.find(e => e.id === id);
+      const effect = session.turnEffects.find(e => e.id.toLowerCase() === id);
 
       if (!effect)
         return interaction.editReply(`❌ Efeito \`${id}\` não encontrado.`);
@@ -713,6 +728,50 @@ async function execute(interaction) {
       const updated = await editMapMessage(interaction, session, mapData);
       await rpgStore.saveSession(guildId, sessionId, updated);
       await interaction.editReply(`✅ **Mapa configurado:**\n${changed.join('\n')}`);
+      break;
+    }
+
+    case 'terreno': {
+      if (!isOwner)
+        return interaction.editReply('❌ Apenas o Mestre dono desta sessão pode alterar o terreno padrão.');
+
+      const novoEmoji  = interaction.options.getString('emoji').trim();
+      const substituir = interaction.options.getString('substituir') === 'sim';
+
+      // Encontra o emoji que era o terreno padrão antes
+      const antigoEmoji =
+        Object.entries(mapData.legend ?? {}).find(([, d]) => d === 'Terreno padrão')?.[0]
+        ?? null;
+
+      // Atualiza a legenda: remove entrada antiga e adiciona a nova
+      mapData.legend = mapData.legend ?? {};
+      if (antigoEmoji && antigoEmoji !== novoEmoji) {
+        delete mapData.legend[antigoEmoji];
+      }
+      mapData.legend[novoEmoji] = 'Terreno padrão';
+
+      // Substitui células que tinham o emoji antigo
+      let substituidos = 0;
+      if (substituir && antigoEmoji && antigoEmoji !== novoEmoji) {
+        for (const cell of Object.keys(mapData.grid)) {
+          if (mapData.grid[cell] === antigoEmoji) {
+            mapData.grid[cell] = novoEmoji;
+            substituidos++;
+          }
+        }
+      }
+
+      await mapStore.save(guildId, session.activeMap, mapData);
+      const updated = await editMapMessage(interaction, session, mapData);
+      await rpgStore.saveSession(guildId, sessionId, updated);
+
+      const lines = [`✅ Terreno padrão alterado para ${novoEmoji}.`];
+      if (substituir && antigoEmoji) {
+        lines.push(`  • ${substituidos} célula(s) atualizadas no grid.`);
+      } else if (!substituir) {
+        lines.push(`  • Grid não alterado. Use \`substituir:Sim\` para atualizar as células existentes.`);
+      }
+      await interaction.editReply(lines.join('\n'));
       break;
     }
 
