@@ -54,18 +54,11 @@ function renderMap(mapData, session) {
   lines.push(round ? `## Rodada ${round}` : '## Mapa');
   lines.push('');
 
-  // ── Grid (dentro de code block) ───────────────────────────────
-  //
-  // Dentro do code block não usamos backtick spans — só texto puro.
-  // Os emojis ainda renderizam normalmente no Discord dentro de ```.
-  // A fonte monospace garante alinhamento consistente:
-  //   xx  = 2 chars  ≈  🇦 (regional, largura dupla)  ≈  ⬜ (emoji, largura dupla)
-  //
-  const gridLines = [];
+  // ── Cabeçalho de colunas ──────────────────────────────────────
+  // Cabeçalho: `xx` | 🇦 | 🇧 | 🇨 ...
+  lines.push(['`xx`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
 
-  // Cabeçalho: xx | 🇦 | 🇧 | 🇨 ...
-  gridLines.push(['xx', ...mapData.cols.map(c => toRegional(c))].join(' | '));
-
+  // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
   const charByCell = {};
   if (!mapData.emojisNoGrid) {
@@ -101,13 +94,9 @@ function renderMap(mapData, session) {
       }
     }
 
-    // Linha: 01 | 🟦 | 🟦 | ...  (número zero-padded, 2 chars)
-    gridLines.push([String(row).padStart(2, '0'), ...cells].join(' | '));
+    // Linha: `01` | 🟦 | 🟦 | ...  (número zero-padded, 2 chars)
+    lines.push(['`' + String(row).padStart(2, '0') + '`', ...cells].join(' | '));
   }
-
-  lines.push('```');
-  for (const gl of gridLines) lines.push(gl);
-  lines.push('```');
 
   // ── Legenda ───────────────────────────────────────────────────
   if (show.legenda) {
