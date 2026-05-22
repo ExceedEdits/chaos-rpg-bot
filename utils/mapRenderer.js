@@ -56,8 +56,9 @@ function renderMap(mapData, session) {
     ?? Object.keys(mapData.legend ?? {})[0]
     ?? '⬛';
 
-  // Cabeçalho: `x` | 🇦 | 🇧 | 🇨 ...
-  lines.push(['`x`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
+  // Cabeçalho: ` x` | 🇦 | 🇧 | 🇨 ...
+  // O rótulo da coluna de índice é fixo em 2 chars para alinhar com os números de linha.
+  lines.push(['` x`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
@@ -97,8 +98,8 @@ function renderMap(mapData, session) {
       }
     }
 
-    // Linha: `1` | 🟦 | 🟦 | ...
-    rowLines.push(['`' + row + '`', ...cells].join(' | '));
+    // Linha: ` 1` | 🟦 | 🟦 | ...  (número sempre com 2 chars para alinhar com o cabeçalho)
+    rowLines.push(['`' + String(row).padStart(2, ' ') + '`', ...cells].join(' | '));
   }
 
   for (const rowLine of rowLines) lines.push(rowLine);
