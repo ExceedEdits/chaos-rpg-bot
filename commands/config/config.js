@@ -9,7 +9,9 @@ const { resolveOrReply,
         isMaster }          = require('../../utils/sessionResolver');
 const { setPrefix }         = require('../../utils/prefixStore');
 const { getMasterRoleId,
-        setMasterRoleId }   = require('../../utils/guildSettingsStore');
+        setMasterRoleId,
+        getDiceListener,
+        setDiceListener }   = require('../../utils/guildSettingsStore');
 
 const data = new SlashCommandBuilder()
   .setName('config')
@@ -53,6 +55,18 @@ const data = new SlashCommandBuilder()
       .setRequired(true)
       .setMinLength(1)
       .setMaxLength(5)))
+
+  .addSubcommand(s => s
+    .setName('listener-dado')
+    .setDescription('Ativa ou desativa a rolagem automática de dados em mensagens (Mestre)')
+    .addStringOption(o => o
+      .setName('estado')
+      .setDescription('Ativar ou desativar o listener de dados')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Ativo — responde rolagens escritas em mensagens (ex: 2d6)',   value: 'sim' },
+        { name: 'Inativo — ignora mensagens; use apenas /rolar ou prefixo',    value: 'nao' },
+      )))
 
   .addSubcommand(s => s
     .setName('tracker')
@@ -113,12 +127,15 @@ async function execute(interaction) {
       ? `<@&${masterRoleId}>`
       : `**${process.env.MASTER_ROLE ?? 'Mestre'}** *(fallback por nome — use \`/config cargo-mestre\` para configurar por ID)*`;
 
+    const diceEnabled = await getDiceListener(guildId);
+
     const lines = [
       '⚙️ **Configurações atuais**',
       '',
       `• Cargo de Mestre: ${masterRoleLabel}`,
       `• Modo de dados: **${process.env.USE_LOCAL_DATA === 'true' ? 'Local (JSON)' : 'MongoDB Atlas'}**`,
       `• Prefixo de texto: \`${prefix}\``,
+      `• Listener de dados: **${diceEnabled ? '✅ Ativo' : '❌ Inativo'}**`,
       '',
       '**Canais de saída:**',
       `  • Mapa: ${mapCh}`,
@@ -130,6 +147,18 @@ async function execute(interaction) {
     ];
 
     await interaction.editReply(lines.join('\n'));
+    return;
+  }
+
+  // ── listener-dado ─────────────────────────────────────────
+  if (sub === 'listener-dado') {
+    const ativo = interaction.options.getString('estado') === 'sim';
+    await setDiceListener(guildId, ativo);
+    await interaction.editReply(
+      ativo
+        ? '✅ Listener de dados **ativado**. O bot responderá a rolagens escritas em mensagens (ex: `2d6`).'
+        : '✅ Listener de dados **desativado**. Use `/rolar` ou o prefixo de texto para rolar dados.'
+    );
     return;
   }
 

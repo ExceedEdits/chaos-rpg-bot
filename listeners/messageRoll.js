@@ -9,6 +9,7 @@ const tagStore                                    = require('../utils/tagStore')
 const { executeCombatTag }                        = require('../utils/combatTags');
 const { handleInitiative }                        = require('../utils/initiativeTags');
 const { getPrefix }                               = require('../utils/prefixStore');
+const { getDiceListener }                         = require('../utils/guildSettingsStore');
 
 // Prefixos fixos de bots comuns — mensagens que começam com eles
 // nunca são rolagens de dado (ex: /slash, !comando, .comando).
@@ -18,6 +19,10 @@ function registerMessageRoll(client) {
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.guildId)   return;
+
+    // Verifica se o listener de dados está ativo neste servidor
+    const enabled = await getDiceListener(message.guildId);
+    if (!enabled) return;
 
     const raw = message.content.trim();
     if (!raw) return;
