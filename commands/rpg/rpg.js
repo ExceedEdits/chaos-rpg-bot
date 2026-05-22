@@ -115,9 +115,8 @@ async function execute(interaction) {
 
   // ── criar — qualquer Mestre ────────────────────────────────
   if (sub === 'criar') {
-    if (!isMaster(interaction.member)) {
-      const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-      await interaction.editReply(`❌ Você precisa do cargo **${cargo}** para criar sessões.`);
+    if (!await isMaster(interaction.member)) {
+      await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para criar sessões.`);
       return;
     }
     const id = interaction.options.getString('id');
@@ -143,9 +142,8 @@ async function execute(interaction) {
 
   // ── entrar — qualquer Mestre ───────────────────────────────
   if (sub === 'entrar') {
-    if (!isMaster(interaction.member)) {
-      const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-      await interaction.editReply(`❌ Você precisa do cargo **${cargo}** para vincular canais.`);
+    if (!await isMaster(interaction.member)) {
+      await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para vincular canais.`);
       return;
     }
     const id      = interaction.options.getString('id').toLowerCase().replace(/\s+/g, '-');
@@ -162,9 +160,8 @@ async function execute(interaction) {
 
   // ── encerrar — qualquer Mestre ─────────────────────────────
   if (sub === 'encerrar') {
-    if (!isMaster(interaction.member)) {
-      const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-      await interaction.editReply(`❌ Você precisa do cargo **${cargo}** para desvincular canais.`);
+    if (!await isMaster(interaction.member)) {
+      await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para desvincular canais.`);
       return;
     }
     const current = await rpgStore.getChannelSession(chanId);
@@ -186,7 +183,7 @@ async function execute(interaction) {
     }
     const { session, sessionId } = resolved;
 
-    if (!isSessionMaster(interaction.member, session)) {
+    if (!await isSessionMaster(interaction.member, session)) {
       await interaction.editReply('❌ Apenas o Mestre que criou esta sessão (ou um administrador) pode alterar o status.');
       return;
     }
@@ -202,9 +199,8 @@ async function execute(interaction) {
 
   // ── deletar — dono da sessão ───────────────────────────────
   if (sub === 'deletar') {
-    if (!isMaster(interaction.member)) {
-      const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-      await interaction.editReply(`❌ Você precisa do cargo **${cargo}** para deletar sessões.`);
+    if (!await isMaster(interaction.member)) {
+      await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para deletar sessões.`);
       return;
     }
 
@@ -215,7 +211,7 @@ async function execute(interaction) {
       return;
     }
 
-    if (!isSessionMaster(interaction.member, session)) {
+    if (!await isSessionMaster(interaction.member, session)) {
       await interaction.editReply('❌ Apenas o Mestre que criou esta sessão (ou um administrador) pode deletá-la.');
       return;
     }
@@ -236,7 +232,7 @@ async function execute(interaction) {
     }
     const { session, sessionId } = resolved;
 
-    if (!isSessionMaster(interaction.member, session)) {
+    if (!await isSessionMaster(interaction.member, session)) {
       await interaction.editReply('❌ Apenas o Mestre que criou esta sessão (ou um administrador) pode configurá-la.');
       return;
     }

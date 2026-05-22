@@ -7,13 +7,9 @@
 const { SlashCommandBuilder } = require('discord.js');
 const characterStore          = require('../../utils/characterStore');
 const rpgStore                = require('../../utils/rpgSessionStore');
-const { resolveOrReply }      = require('../../utils/sessionResolver');
+const { resolveOrReply,
+        isMaster }            = require('../../utils/sessionResolver');
 const { formatFullStatus }    = require('../../utils/statusEngine');
-
-function isMaster(member) {
-  const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-  return member.roles.cache.some(r => r.name === cargo);
-}
 
 // ── Opções reutilizáveis ──────────────────────────────────────
 
@@ -78,9 +74,10 @@ const data = new SlashCommandBuilder()
 async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
-  const master  = isMaster(interaction.member);
 
   await interaction.deferReply({ ephemeral: true });
+
+  const master  = await isMaster(interaction.member);
 
   // ── meus — sem precisar de sessão ─────────────────────────
   if (sub === 'meus') {

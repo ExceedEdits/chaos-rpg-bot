@@ -4,14 +4,12 @@
 // ============================================================
 
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
-const rpgStore           = require('../../utils/rpgSessionStore');
-const { resolveOrReply } = require('../../utils/sessionResolver');
-const { setPrefix }      = require('../../utils/prefixStore');
-
-function isMaster(member) {
-  return member.permissions.has('Administrator')
-      || member.roles.cache.some(r => r.name === (process.env.MASTER_ROLE ?? 'Mestre'));
-}
+const rpgStore              = require('../../utils/rpgSessionStore');
+const { resolveOrReply,
+        isMaster }          = require('../../utils/sessionResolver');
+const { setPrefix }         = require('../../utils/prefixStore');
+const { getMasterRoleId,
+        setMasterRoleId }   = require('../../utils/guildSettingsStore');
 
 const data = new SlashCommandBuilder()
   .setName('config')
@@ -20,6 +18,14 @@ const data = new SlashCommandBuilder()
   .addSubcommand(s => s
     .setName('ver')
     .setDescription('Exibe as configurações atuais'))
+
+  .addSubcommand(s => s
+    .setName('cargo-mestre')
+    .setDescription('Define o cargo de Mestre do servidor (apenas Administradores)')
+    .addRoleOption(o => o
+      .setName('cargo')
+      .setDescription('Cargo que terá permissão de Mestre')
+      .setRequired(true)))
 
   .addSubcommand(s => s
     .setName('canal')
@@ -73,7 +79,19 @@ async function execute(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  if (!isMaster(interaction.member)) {
+  // ── cargo-mestre — apenas administradores ─────────────────
+  if (sub === 'cargo-mestre') {
+    if (!interaction.member.permissions.has('Administrator')) {
+      await interaction.editReply('❌ Apenas administradores podem definir o cargo de Mestre do servidor.');
+      return;
+    }
+    const role = interaction.options.getRole('cargo');
+    await setMasterRoleId(guildId, role.id);
+    await interaction.editReply(`✅ Cargo de Mestre definido como <@&${role.id}>.\nMembros com este cargo terão permissões de Mestre.`);
+    return;
+  }
+
+  if (!await isMaster(interaction.member)) {
     await interaction.editReply('❌ Você precisa ser administrador ou Mestre para alterar configurações.');
     return;
   }
@@ -90,10 +108,15 @@ async function execute(interaction) {
     const trackFixed = settings.trackerFixed          ? 'Sim (mensagem fixa)'                         : 'Nao (nova por turno)';
     const decr       = settings.decrementMode === 'turn' ? 'Por turno'                                : 'Por rodada';
 
+    const masterRoleId = await getMasterRoleId(guildId);
+    const masterRoleLabel = masterRoleId
+      ? `<@&${masterRoleId}>`
+      : `**${process.env.MASTER_ROLE ?? 'Mestre'}** *(fallback por nome — use \`/config cargo-mestre\` para configurar por ID)*`;
+
     const lines = [
       '⚙️ **Configurações atuais**',
       '',
-      `• Cargo de Mestre: **${process.env.MASTER_ROLE ?? 'Mestre'}** *(definido no .env)*`,
+      `• Cargo de Mestre: ${masterRoleLabel}`,
       `• Modo de dados: **${process.env.USE_LOCAL_DATA === 'true' ? 'Local (JSON)' : 'MongoDB Atlas'}**`,
       `• Prefixo de texto: \`${prefix}\``,
       '',

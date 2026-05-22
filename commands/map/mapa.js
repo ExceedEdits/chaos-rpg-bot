@@ -49,10 +49,6 @@ function validMapId(id) {
   return /^[\w-]+$/.test(id);
 }
 
-// Wrapper local para verificar dono da sessão
-function checkSessionMaster(interaction, session) {
-  return isSessionMaster(interaction.member, session);
-}
 
 // ── Definição do comando ──────────────────────────────────────
 const data = new SlashCommandBuilder()
@@ -433,7 +429,7 @@ async function execute(interaction) {
   session.turnEffects = session.turnEffects ?? [];
 
   // Permissão: dono da sessão ou admin
-  const isOwner = checkSessionMaster(interaction, session);
+  const isOwner = await isSessionMaster(interaction.member, session);
 
   // ── listar ────────────────────────────────────────────────────
   if (sub === 'listar' && !group) {

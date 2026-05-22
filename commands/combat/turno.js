@@ -6,15 +6,10 @@
 const { SlashCommandBuilder } = require('discord.js');
 const characterStore          = require('../../utils/characterStore');
 const rpgStore                = require('../../utils/rpgSessionStore');
-const { resolveOrReply }      = require('../../utils/sessionResolver');
+const { resolveOrReply,
+        isMaster }            = require('../../utils/sessionResolver');
 const { processRoundForChar } = require('../../utils/statusEngine');
 const { renderTracker }       = require('../../utils/turnRenderer');
-
-function isMaster(member) {
-  const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-  return member.roles.cache.some(r => r.name === cargo)
-      || member.permissions.has('Administrator');
-}
 
 function makeSlotKey() {
   return Math.random().toString(36).slice(2, 8);
@@ -197,8 +192,8 @@ async function execute(interaction) {
 
   // ── adicionar ──────────────────────────────────────────────
   if (sub === 'adicionar') {
-    if (!isMaster(interaction.member)) {
-      await interaction.editReply(`❌ Você precisa do cargo **${process.env.MASTER_ROLE ?? 'Mestre'}** para modificar a ordem de turno.`);
+    if (!await isMaster(interaction.member)) {
+      await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para modificar a ordem de turno.`);
       return;
     }
 
@@ -250,8 +245,8 @@ async function execute(interaction) {
 
   // ── remover ────────────────────────────────────────────────
   if (sub === 'remover') {
-    if (!isMaster(interaction.member)) {
-      await interaction.editReply(`❌ Você precisa do cargo **${process.env.MASTER_ROLE ?? 'Mestre'}** para modificar a ordem de turno.`);
+    if (!await isMaster(interaction.member)) {
+      await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para modificar a ordem de turno.`);
       return;
     }
 

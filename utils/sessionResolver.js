@@ -3,15 +3,20 @@
 // ============================================================
 
 const rpgStore = require('./rpgSessionStore');
+const { getMasterRoleId } = require('./guildSettingsStore');
 
 // ── Permissões ────────────────────────────────────────────────
 
 /**
  * Verifica se o member tem o cargo de Mestre (ou é admin).
+ * Primeiro verifica por ID configurado no MongoDB; fallback por nome via env.
  */
-function isMaster(member) {
-  return member.permissions.has('Administrator')
-      || member.roles.cache.some(r => r.name === (process.env.MASTER_ROLE ?? 'Mestre'));
+async function isMaster(member) {
+  if (member.permissions.has('Administrator')) return true;
+  const roleId = await getMasterRoleId(member.guild.id);
+  if (roleId) return member.roles.cache.has(roleId);
+  // fallback: cargo por nome via env
+  return member.roles.cache.some(r => r.name === (process.env.MASTER_ROLE ?? 'Mestre'));
 }
 
 /**
@@ -19,9 +24,9 @@ function isMaster(member) {
  * Admins do servidor passam sempre.
  * Mestres só passam se forem o criador da sessão (session.masterId).
  */
-function isSessionMaster(member, session) {
+async function isSessionMaster(member, session) {
   if (member.permissions.has('Administrator')) return true;
-  if (!isMaster(member)) return false;
+  if (!(await isMaster(member))) return false;
   return session.masterId === member.id;
 }
 
@@ -30,7 +35,7 @@ function isSessionMaster(member, session) {
  * Retorna true se o member for o dono (ou admin) — o comando pode prosseguir.
  */
 async function requireSessionMaster(interaction, session) {
-  if (isSessionMaster(interaction.member, session)) return true;
+  if (await isSessionMaster(interaction.member, session)) return true;
   const msg = { content: '❌ Apenas o Mestre que criou esta sessão (ou um administrador) pode fazer isso.', ephemeral: true };
   if (interaction.deferred || interaction.replied) await interaction.editReply(msg);
   else await interaction.reply(msg);

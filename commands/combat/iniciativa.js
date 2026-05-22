@@ -7,13 +7,8 @@
 const { SlashCommandBuilder } = require('discord.js');
 const rpgStore       = require('../../utils/rpgSessionStore');
 const characterStore = require('../../utils/characterStore');
-const { resolveOrReply } = require('../../utils/sessionResolver');
-
-function isMaster(member) {
-  const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-  return member.roles.cache.some(r => r.name === cargo)
-      || member.permissions.has('Administrator');
-}
+const { resolveOrReply,
+        isMaster } = require('../../utils/sessionResolver');
 
 function makeSlotKey() {
   return Math.random().toString(36).slice(2, 8);
@@ -82,9 +77,8 @@ async function execute(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  if (sub !== 'ver' && !isMaster(interaction.member)) {
-    const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-    await interaction.editReply(`❌ Você precisa do cargo **${cargo}** para gerenciar a iniciativa.`);
+  if (sub !== 'ver' && !await isMaster(interaction.member)) {
+    await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para gerenciar a iniciativa.`);
     return;
   }
 

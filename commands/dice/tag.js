@@ -5,11 +5,7 @@
 
 const { SlashCommandBuilder } = require('discord.js');
 const tagStore = require('../../utils/tagStore');
-
-function isMaster(member) {
-  const cargoNome = process.env.MASTER_ROLE ?? 'Mestre';
-  return member.roles.cache.some(r => r.name === cargoNome);
-}
+const { isMaster } = require('../../utils/sessionResolver');
 
 function parseConditions(raw) {
   const parts = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -135,10 +131,9 @@ async function execute(interaction) {
   }
 
   // criar / deletar — exige cargo de Mestre
-  if (!isMaster(interaction.member)) {
-    const cargo = process.env.MASTER_ROLE ?? 'Mestre';
+  if (!await isMaster(interaction.member)) {
     await interaction.reply({
-      content: `❌ Você precisa do cargo **${cargo}** para gerenciar tags.`,
+      content: `❌ Você precisa do cargo de **Mestre** para gerenciar tags.`,
       ephemeral: true,
     });
     return;

@@ -13,14 +13,7 @@ const { executeCombatTag } = require('../utils/combatTags');
 const { getPrefix, setPrefix } = require('../utils/prefixStore');
 const { parseCommand }     = require('../utils/prefixParser');
 const { TextInteraction }  = require('../utils/textInteraction');
-
-// ── Cargo de Mestre ───────────────────────────────────────────
-
-function isMaster(member) {
-  const cargo = process.env.MASTER_ROLE ?? 'Mestre';
-  return member.roles.cache.some(r => r.name === cargo)
-      || member.permissions.has('Administrator');
-}
+const { isMaster }         = require('../utils/sessionResolver');
 
 // ── Help ──────────────────────────────────────────────────────
 
@@ -113,8 +106,8 @@ function registerPrefixListener(client) {
     try {
       // ── setprefix ──────────────────────────────────────────
       if (after.toLowerCase().startsWith('setprefix')) {
-        if (!isMaster(message.member)) {
-          await message.reply(`❌ Você precisa do cargo **${process.env.MASTER_ROLE ?? 'Mestre'}** para mudar o prefixo.`);
+        if (!await isMaster(message.member)) {
+          await message.reply(`❌ Você precisa do cargo de **Mestre** para mudar o prefixo.`);
           return;
         }
         const novo = after.split(/\s+/)[1] ?? '';
