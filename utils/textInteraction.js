@@ -102,35 +102,56 @@ class TextInteraction {
     this.deferred = true;
   }
 
+  _buildPayload(data) {
+    if (typeof data === 'string') return { content: data };
+    const { content = '', components, embeds, files } = data ?? {};
+    const payload = {};
+    if (content)    payload.content    = content;
+    if (components) payload.components = components;
+    if (embeds)     payload.embeds     = embeds;
+    if (files)      payload.files      = files;
+    return payload;
+  }
+
   async reply(data) {
     if (this._replied) return;
-    const content = typeof data === 'string' ? data : (data?.content ?? '');
-    if (!content) return;
-    this._replyMsg = await this._msg.reply({ content });
+    const payload = this._buildPayload(data);
+    if (!Object.keys(payload).length) return;
+    // Mensagens de texto não suportam ephemeral — ignoramos silenciosamente
+    this._replyMsg = await this._msg.reply(payload);
     this._replied  = true;
     this.deferred  = false;
   }
 
   async editReply(data) {
-    const content = typeof data === 'string' ? data : (data?.content ?? '');
-    if (!content) return;
+    const payload = this._buildPayload(data);
+    if (!Object.keys(payload).length) return;
 
     if (this._replyMsg) {
       try {
-        await this._replyMsg.edit(content);
+        await this._replyMsg.edit(payload);
         return;
       } catch { /* mensagem deletada — posta nova */ }
     }
 
-    this._replyMsg = await this._msg.reply({ content });
+    this._replyMsg = await this._msg.reply(payload);
     this._replied  = true;
     this.deferred  = false;
   }
 
   async followUp(data) {
-    const content = typeof data === 'string' ? data : (data?.content ?? '');
-    if (!content) return;
-    await this._msg.reply({ content });
+    if (typeof data === 'string') {
+      await this._msg.reply({ content: data });
+      return;
+    }
+    const { content = '', components, embeds, files } = data ?? {};
+    const payload = {};
+    if (content)    payload.content    = content;
+    if (components) payload.components = components;
+    if (embeds)     payload.embeds     = embeds;
+    if (files)      payload.files      = files;
+    if (!Object.keys(payload).length) return;
+    await this._msg.reply(payload);
   }
 
   // isChatInputCommand é verificado por alguns lugares — retorna true

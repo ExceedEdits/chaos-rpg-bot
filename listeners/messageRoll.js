@@ -8,7 +8,10 @@ const { format }                                  = require('../utils/diceFormat
 const tagStore                                    = require('../utils/tagStore');
 const { executeCombatTag }                        = require('../utils/combatTags');
 const { handleInitiative }                        = require('../utils/initiativeTags');
+const { getPrefix }                               = require('../utils/prefixStore');
 
+// Prefixos fixos de bots comuns — mensagens que começam com eles
+// nunca são rolagens de dado (ex: /slash, !comando, .comando).
 const IGNORED_PREFIXES = ['/', '!', '?', '.', '-'];
 
 function registerMessageRoll(client) {
@@ -18,7 +21,14 @@ function registerMessageRoll(client) {
 
     const raw = message.content.trim();
     if (!raw) return;
+
+    // Ignora prefixos fixos de bots comuns
     if (IGNORED_PREFIXES.some(p => raw.startsWith(p))) return;
+
+    // Ignora o prefixo configurado para este servidor — essas mensagens
+    // já são tratadas pelo prefixListener e não devem gerar double reply.
+    const guildPrefix = await getPrefix(message.guildId);
+    if (raw.startsWith(guildPrefix)) return;
 
     const customTags = await tagStore.getAll(message.guildId);
     const parsed     = parse(raw, customTags);
