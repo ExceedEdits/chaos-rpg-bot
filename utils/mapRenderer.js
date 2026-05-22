@@ -55,8 +55,11 @@ function renderMap(mapData, session) {
   lines.push('');
 
   // ── Cabeçalho de colunas ──────────────────────────────────────
-  // Cabeçalho: `xx` | 🇦 | 🇧 | 🇨 ...
-  lines.push(['`xx`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
+  // Emojis de linha (1️⃣–🔟) — mesma largura dupla dos emojis regionais de coluna.
+  // 🔲 ocupa o canto superior esquerdo como placeholder neutro.
+  const ROW_EMOJIS = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+
+  lines.push(['🔲', ...mapData.cols.map(c => toRegional(c))].join(' | '));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
@@ -94,8 +97,8 @@ function renderMap(mapData, session) {
       }
     }
 
-    // Linha: `01` | 🟦 | 🟦 | ...  (número zero-padded, 2 chars)
-    lines.push(['`' + String(row).padStart(2, '0') + '`', ...cells].join(' | '));
+    // Linha: 1️⃣ | 🟦 | 🟦 | ...
+    lines.push([ROW_EMOJIS[row - 1] ?? String(row), ...cells].join(' | '));
   }
 
   // ── Legenda ───────────────────────────────────────────────────
