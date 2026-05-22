@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Spotify Auth — Chaos RPG Bot</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 80px auto; padding: 0 24px; }
+    h2   { color: #1db954; }
+    pre  { background: #f0f0f0; padding: 16px; border-radius: 8px;
+           word-break: break-all; white-space: pre-wrap; font-size: 14px; }
+    .error { color: #c0392b; }
+  </style>
+</head>
+<body>
+  <h2>✅ Spotify Auth — Chaos RPG Bot</h2>
+  <div id="content">Carregando...</div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const code   = params.get('code');
+    const error  = params.get('error');
+    const el     = document.getElementById('content');
+
+    if (code) {
+      el.innerHTML =
+        '<p>Cole este código no terminal quando solicitado:</p>' +
+        '<pre>' + code + '</pre>' +
+        '<p style="color:#888;font-size:13px">Este código expira em ~10 minutos.</p>';
+    } else if (error) {
+      el.innerHTML = '<p class="error">Erro: ' + error + '</p>';
+    } else {
+      el.innerHTML = '<p class="error">Nenhum código encontrado na URL.</p>';
+    }
+  </script>
+</body>
+</html>

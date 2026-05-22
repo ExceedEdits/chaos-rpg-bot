@@ -109,6 +109,62 @@ client.on('guildDelete', async (guild) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+  // ── Botão "Carregar mais músicas" ─────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith('loadmore:')) {
+    const parts = interaction.customId.split(':');
+    // formato: loadmore:{type}:{id}:{offset}
+    // id pode conter ':' (raro mas seguro dividir em 4 partes max)
+    const [, type, id, offsetStr] = parts;
+    const offset = parseInt(offsetStr, 10);
+
+    if (!type || !id || isNaN(offset)) {
+      return interaction.reply({ content: '❌ Dados do botão inválidos.', ephemeral: true });
+    }
+
+    const voiceChannel = interaction.member?.voice?.channel;
+    if (!voiceChannel) {
+      return interaction.reply({ content: '❌ Entre em um canal de voz primeiro.', ephemeral: true });
+    }
+
+    await interaction.deferUpdate();
+
+    const { loadMoreTracks, addManyToQueue } = require('./utils/musicPlayer');
+    try {
+      const result = await loadMoreTracks({ type, id, offset }, interaction.user.username);
+      const { tracks, truncated, continuation } = result;
+
+      if (!tracks.length) {
+        return interaction.editReply({ content: '✅ Não há mais músicas para carregar.', components: [] });
+      }
+
+      await addManyToQueue(interaction.guildId, tracks, voiceChannel, interaction.channel);
+
+      if (truncated && continuation) {
+        const newCustomId = `loadmore:${continuation.type}:${continuation.id}:${continuation.offset}`;
+        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(newCustomId)
+            .setLabel('Carregar mais músicas')
+            .setStyle(ButtonStyle.Secondary),
+        );
+        return interaction.editReply({
+          content: `📂 ➕ **+${tracks.length}** músicas adicionadas à fila. Ainda há mais.`,
+          components: [row],
+        });
+      }
+
+      return interaction.editReply({
+        content: `📂 ✅ **+${tracks.length}** músicas adicionadas. Playlist completamente carregada!`,
+        components: [],
+      });
+    } catch (err) {
+      console.error('[Music] loadMoreTracks error:', err);
+      return interaction.editReply({ content: `❌ Erro ao carregar mais músicas: ${err.message}`, components: [] });
+    }
+  }
+
+  // ── Slash commands ────────────────────────────────────────
   if (!interaction.isChatInputCommand()) return;
   const cmd = client.commands.get(interaction.commandName);
   if (!cmd) return;

@@ -359,4 +359,4 @@ function parse(raw, customTags = {}) {
   return null;
 }
 
-module.exports = { parse, parseSingleRoll, parseExpression, buildExprLabel, randInt };
+module.exports = { parse, parseSingleRoll, parseExpression, buildExprLabel };

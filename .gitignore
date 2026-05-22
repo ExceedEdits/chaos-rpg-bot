@@ -1,10 +1,7 @@
-# Ambiente
-.env
 node_modules/
-
-# Logs do PM2
-logs/*.log
-
-# Sistemas operacionais
-.DS_Store
-Thumbs.db
+.env
+bin/
+.claude/
+*-player-script.js
+data/prefixes.json
+data/rpg_sessions.json
