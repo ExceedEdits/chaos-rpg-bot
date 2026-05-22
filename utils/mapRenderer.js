@@ -5,6 +5,11 @@
 /**
  * Renderiza o mapa + painéis laterais.
  *
+ * O grid é encapsulado em um bloco de código (```) para garantir
+ * fonte monospace e evitar que o parser do Discord interfira com
+ * emojis e pipes. Os painéis abaixo ficam fora do bloco e usam
+ * markdown normal (**bold**, *italic*, etc.).
+ *
  * Painéis configuráveis via mapData.panels:
  *   { legenda, personagens, npcs, inimigos, estruturas }  → true/false
  *   Omitidos = true (exibido por padrão).
@@ -17,6 +22,7 @@
  * @param {object} session
  * @returns {string}
  */
+
 /**
  * Converte um único caractere letra em emoji de indicador regional (🇦–🇿).
  * Para não-letras retorna o valor sem alteração.
@@ -48,19 +54,18 @@ function renderMap(mapData, session) {
   lines.push(round ? `## Rodada ${round}` : '## Mapa');
   lines.push('');
 
-  // ── Cabeçalho de colunas ──────────────────────────────────────
-  // Usa o emoji do terreno padrão (legenda com desc 'Terreno padrão'),
-  // ou o primeiro da legenda, ou ⬛ como fallback.
-  const defaultTerrain =
-    Object.entries(mapData.legend ?? {}).find(([, d]) => d === 'Terreno padrão')?.[0]
-    ?? Object.keys(mapData.legend ?? {})[0]
-    ?? '⬛';
+  // ── Grid (dentro de code block) ───────────────────────────────
+  //
+  // Dentro do code block não usamos backtick spans — só texto puro.
+  // Os emojis ainda renderizam normalmente no Discord dentro de ```.
+  // A fonte monospace garante alinhamento consistente:
+  //   xx  = 2 chars  ≈  🇦 (regional, largura dupla)  ≈  ⬜ (emoji, largura dupla)
+  //
+  const gridLines = [];
 
-  // Cabeçalho: `0x` | 🇦 | 🇧 | 🇨 ...
-  // O rótulo da coluna de índice é fixo em 2 chars para alinhar com os números de linha.
-  lines.push(['`xx`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
+  // Cabeçalho: xx | 🇦 | 🇧 | 🇨 ...
+  gridLines.push(['xx', ...mapData.cols.map(c => toRegional(c))].join(' | '));
 
-  // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização
   const charByCell = {};
   if (!mapData.emojisNoGrid) {
@@ -73,13 +78,12 @@ function renderMap(mapData, session) {
 
   // Mapa célula → emoji do NPC para renderização no grid
   const npcCellEmoji = new Map();
-  for (const [name, npc] of Object.entries(session.npcs ?? {})) {
+  for (const [, npc] of Object.entries(session.npcs ?? {})) {
     if (npc.pos && npc.pos.match(/^[A-Z]+\d+$/)) {
       npcCellEmoji.set(npc.pos, npc.emoji ?? '🔵');
     }
   }
 
-  const rowLines = [];
   for (const row of mapData.rows) {
     const cells = [];
 
@@ -89,7 +93,6 @@ function renderMap(mapData, session) {
 
       const charsHere = charByCell[cell];
       if (charsHere?.length > 0) {
-        // Exatamente 1 emoji — preserva a largura da célula
         cells.push(charsHere[0]);
       } else if (npcCellEmoji.has(cell)) {
         cells.push(npcCellEmoji.get(cell));
@@ -98,11 +101,13 @@ function renderMap(mapData, session) {
       }
     }
 
-    // Linha: `01` | 🟦 | 🟦 | ...  (número sempre com 2 chars, zero-padded)
-    rowLines.push(['`' + String(row).padStart(2, '0') + '`', ...cells].join(' | '));
+    // Linha: 01 | 🟦 | 🟦 | ...  (número zero-padded, 2 chars)
+    gridLines.push([String(row).padStart(2, '0'), ...cells].join(' | '));
   }
 
-  for (const rowLine of rowLines) lines.push(rowLine);
+  lines.push('```');
+  for (const gl of gridLines) lines.push(gl);
+  lines.push('```');
 
   // ── Legenda ───────────────────────────────────────────────────
   if (show.legenda) {
