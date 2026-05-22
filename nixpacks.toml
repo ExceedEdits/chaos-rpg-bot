@@ -1,2 +1,5 @@
 [phases.setup]
-nixPkgs = ["python3", "ffmpeg"]
+# python3  → yt-dlp precisa de Python no runtime (mesmo o binário "standalone")
+# ffmpeg   → transcodificação de áudio (preferido sobre ffmpeg-static no Linux)
+# libopus + pkg-config → compilação nativa do @discordjs/opus
+nixPkgs = ["python3", "ffmpeg", "libopus", "pkg-config"]

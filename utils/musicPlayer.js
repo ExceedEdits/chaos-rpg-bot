@@ -5,8 +5,6 @@
 //  Streaming       : yt-dlp → ffmpeg (pipe local, PCM raw)
 // ============================================================
 
-process.env.FFMPEG_PATH = require('ffmpeg-static');
-
 const {
   createAudioPlayer,
   createAudioResource,
@@ -15,9 +13,24 @@ const {
   StreamType,
 } = require('@discordjs/voice');
 const path      = require('path');
+const fs        = require('fs');
 const https     = require('https');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const YTDlpWrap = require('yt-dlp-wrap').default;
+
+// ── ffmpeg ────────────────────────────────────────────────────
+// No Linux (Railway/nixpacks) preferimos o ffmpeg do sistema, que é instalado
+// via nixpacks.toml e fica disponível no PATH como 'ffmpeg'.
+// No Windows (dev local) e como fallback no Linux usamos o ffmpeg-static.
+const _FFMPEG_BIN = (() => {
+  if (process.platform === 'win32') return require('ffmpeg-static');
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+    return 'ffmpeg'; // sistema (nixpacks)
+  } catch {
+    return require('ffmpeg-static'); // fallback bundled
+  }
+})();
 
 // ── yt-dlp ───────────────────────────────────────────────────
 // No Windows (dev local) o binário fica em bin/ junto ao projeto.
@@ -34,12 +47,22 @@ async function _ensureYtDlp() {
   const wrap = new YTDlpWrap(_BIN_PATH);
   try {
     await wrap.getVersion();
+    _ytDlpReady = true;
   } catch {
-    console.log('[Music] Baixando yt-dlp...');
-    await YTDlpWrap.downloadFromGithub(_BIN_PATH);
-    console.log('[Music] yt-dlp pronto.');
+    console.log('[Music] yt-dlp não encontrado. Baixando do GitHub...');
+    try {
+      await YTDlpWrap.downloadFromGithub(_BIN_PATH);
+      // Garante permissão de execução no Linux (necessário após download)
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(_BIN_PATH, 0o755); } catch {}
+      }
+      _ytDlpReady = true;
+      console.log('[Music] yt-dlp pronto em', _BIN_PATH);
+    } catch (err) {
+      console.error('[Music] Falha ao baixar yt-dlp:', err.message);
+      throw err;
+    }
   }
-  _ytDlpReady = true;
 }
 
 // ── Spotify Web API ───────────────────────────────────────────
@@ -306,7 +329,6 @@ function extractVideoId(url) {
  */
 async function _getYouTubeAudioStream(url) {
   await _ensureYtDlp();
-  const ffmpegPath = require('ffmpeg-static');
 
   const ytdlp = spawn(_BIN_PATH, [
     url,
@@ -316,7 +338,7 @@ async function _getYouTubeAudioStream(url) {
     '--quiet',
   ]);
 
-  const ffmpeg = spawn(ffmpegPath, [
+  const ffmpeg = spawn(_FFMPEG_BIN, [
     '-i', 'pipe:0',
     '-vn',
     '-f', 's16le',
