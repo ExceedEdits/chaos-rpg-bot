@@ -61,13 +61,26 @@ for (const file of commandFiles) {
 
 // ── Registra slash commands ───────────────────────────────────
 async function registerCommands() {
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  const rest    = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  const guildId = process.env.GUILD_ID;
+
   try {
-    console.log(`[Chaos RPG] Registrando ${slashData.length} comando(s)...`);
-    await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-      { body: slashData },
-    );
+    if (guildId) {
+      // Modo dev: registra só no servidor de teste — aparece instantaneamente.
+      console.log(`[Chaos RPG] Registrando ${slashData.length} comando(s) no servidor ${guildId} (dev)...`);
+      await rest.put(
+        Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+        { body: slashData },
+      );
+    } else {
+      // Modo produção: registra globalmente — funciona em todos os servidores.
+      // Leva até 1 hora para propagar na primeira vez.
+      console.log(`[Chaos RPG] Registrando ${slashData.length} comando(s) globalmente...`);
+      await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID),
+        { body: slashData },
+      );
+    }
     console.log('[Chaos RPG] Comandos registrados.');
   } catch (err) {
     console.error('[Chaos RPG] Erro ao registrar comandos:', err);
