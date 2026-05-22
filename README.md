@@ -1,482 +1,512 @@
 # Chaos RPG Bot
 
-Bot de RPG para sessões de TTRPG no Discord. Gerencia dados, mapas em emoji, iniciativa, turnos, status de combate, personagens e reprodução de música — tudo pelo Discord, com ou sem slash commands.
+Bot de Discord para sessões de TTRPG — gerencia combate, mapas, iniciativa, personagens, NPCs e música. Suporta múltiplos servidores simultaneamente com dados isolados por servidor.
+
+📖 **Documentação completa:** https://exceededits.github.io/chaos-rpg-site/
 
 ---
 
-## Setup
+## Sumário
+
+- [Stack](#stack)
+- [Setup local](#setup-local)
+- [Deploy no Railway](#deploy-no-railway)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Comandos](#comandos)
+  - [Dados](#-dados)
+  - [Combate](#️-combate)
+  - [Mapa](#️-mapa)
+  - [Música](#-música)
+  - [Sessão RPG](#️-sessão-rpg)
+  - [Configurações](#️-configurações)
+- [Comandos de texto (prefixo)](#comandos-de-texto-prefixo)
+- [Rolagem em mensagens](#rolagem-em-mensagens)
+- [Estrutura de arquivos](#estrutura-de-arquivos)
+
+---
+
+## Stack
+
+| Componente | Tecnologia |
+|---|---|
+| Runtime | Node.js 20 |
+| Discord | discord.js v14 |
+| Banco de dados | MongoDB Atlas (ou JSON local em dev) |
+| Áudio | yt-dlp + ffmpeg |
+| Hospedagem | Railway (Dockerfile) |
+
+---
+
+## Setup local
 
 ### Pré-requisitos
 - Node.js v18+
 - Conta no [Discord Developer Portal](https://discord.com/developers/applications)
 
 ### 1. Criar o bot
+
 1. Developer Portal → **New Application**
-2. **Bot** → **Add Bot** → copie o **Token**
-3. **Bot** → **Privileged Gateway Intents** → ative **Message Content Intent** e **Server Members Intent**
-4. **OAuth2 → URL Generator** → marque: `bot`, `applications.commands`
-5. Bot Permissions: `Send Messages`, `Read Messages`, `Manage Messages`, `Connect`, `Speak`
-6. Convide o bot com o link gerado
+2. **Bot** → copie o **Token**
+3. **Bot → Privileged Gateway Intents** → ative **Message Content Intent**
+4. **OAuth2 → URL Generator** → marque `bot` e `applications.commands`
+5. Permissões: `Send Messages`, `Read Messages`, `Manage Messages`, `Connect`, `Speak`, `Use External Emojis`
 
 ### 2. Instalar e configurar
+
 ```bash
+git clone https://github.com/ExceedEdits/chaos-rpg-bot.git
+cd chaos-rpg-bot
 npm install
+cp .env.example .env
+# edite .env com suas credenciais
 ```
 
-Crie `.env` na raiz do projeto:
+Para dev local sem MongoDB, use `USE_LOCAL_DATA=true` — os dados ficam em `data/*.json`.
 
-```env
-DISCORD_TOKEN=seu_token_aqui
-CLIENT_ID=id_do_bot_aqui
-GUILD_ID=id_do_servidor_aqui
-USE_LOCAL_DATA=true
-```
+### 3. Spotify (opcional)
 
-> Para produção com MongoDB, substitua `USE_LOCAL_DATA=true` por `MONGODB_URI=sua_uri`.
-
-### 3. Configurar Spotify (opcional)
-
-Para tocar playlists e álbuns do Spotify:
+Para suporte a playlists e álbuns do Spotify:
 
 1. Crie um app em [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-2. Em **Edit Settings → Redirect URIs**, adicione a URL da sua página GitHub Pages (veja passo 4)
-3. Adicione ao `.env`:
-   ```env
-   SPOTIFY_CLIENT_ID=seu_client_id
-   SPOTIFY_CLIENT_SECRET=seu_client_secret
-   SPOTIFY_REDIRECT_URI=https://seu-usuario.github.io/spotify-callback/
-   ```
-4. Hospede `scripts/spotify-callback.html` no GitHub Pages como `index.html`
-5. Execute o script de autenticação:
+2. Em **Redirect URIs**, adicione: `https://exceededits.github.io/chaos-rpg-site/spotify-callback.html`
+3. Adicione `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` e `SPOTIFY_REDIRECT_URI` ao `.env`
+4. Gere o refresh token:
    ```bash
    node scripts/spotify-auth.js
    ```
-6. Autorize no navegador, copie o código exibido na página, cole no terminal
-7. Adicione o token gerado ao `.env`:
-   ```env
-   SPOTIFY_REFRESH_TOKEN=token_gerado
-   ```
+5. Adicione o token gerado como `SPOTIFY_REFRESH_TOKEN` no `.env`
 
 ### 4. Iniciar
+
 ```bash
-node index.js
-# ou em modo dev (reload automático):
-node --watch index.js
+npm start
+# modo dev com reload automático:
+npm run dev
 ```
 
 ---
 
-## Sistema de Prefixo
+## Deploy no Railway
 
-Todos os slash commands podem ser usados via mensagem de texto com o prefixo configurado (padrão: `!`).
+O projeto inclui um `Dockerfile` que instala automaticamente todas as dependências do sistema (python3, ffmpeg, libopus, ca-certificates). O Railway detecta o arquivo e usa Docker diretamente.
 
-**Formato geral:**
-```
-!comando subcomando chave:valor chave:"valor com espaço"
-!comando grupo subcomando chave:valor ...
-```
+**Passos:**
 
-| Comando | Descrição |
-|---|---|
-| `!help` / `!ajuda` | Lista todos os comandos disponíveis |
-| `!setprefix <p>` | Muda o prefixo do servidor (Mestre) |
+1. Crie um novo serviço no Railway e conecte o repositório GitHub
+2. Configure as variáveis de ambiente em **Settings → Variables**
+3. O deploy é acionado automaticamente a cada push
+
+> **Importante:** Não defina `GUILD_ID` em produção — os slash commands serão registrados globalmente em todos os servidores.
+
+**MongoDB Atlas:** Vá em **Security → Network Access** e adicione `0.0.0.0/0` para permitir conexões do Railway (IPs dinâmicos).
 
 ---
 
-## Rolagem de Dados
+## Variáveis de ambiente
 
-O bot detecta automaticamente expressões de dados em mensagens normais do chat, sem necessidade de prefixo ou slash command.
+Copie `.env.example` para `.env` e preencha os valores. No Railway, configure em **Settings → Variables**.
 
-### Formatos suportados
+| Variável | Obrigatória | Descrição |
+|---|---|---|
+| `DISCORD_TOKEN` | ✅ | Token do bot |
+| `CLIENT_ID` | ✅ | Application ID do bot |
+| `MONGODB_URI` | ✅* | URI do MongoDB Atlas (`mongodb+srv://...`) |
+| `USE_LOCAL_DATA` | — | `true` = JSON local (dev); `false` = MongoDB |
+| `GUILD_ID` | — | ID do servidor para registro instantâneo (dev only) |
+| `SPOTIFY_CLIENT_ID` | — | Client ID do app Spotify |
+| `SPOTIFY_CLIENT_SECRET` | — | Client Secret do app Spotify |
+| `SPOTIFY_REDIRECT_URI` | — | URI de redirecionamento OAuth |
+| `SPOTIFY_REFRESH_TOKEN` | — | Refresh token do Spotify |
+| `MASTER_ROLE` | — | Nome do cargo Mestre como fallback (padrão: `Mestre`) |
 
-| Expressão | O que faz |
+*Não obrigatória com `USE_LOCAL_DATA=true`.
+
+---
+
+## Comandos
+
+> 🔒 Mestre ou Administrador · 👑 Dono da sessão ou Administrador · Todos isolados por servidor.
+
+---
+
+### 🎲 Dados
+
+#### `/rolar expressao:`
+Rola dados e expressões matemáticas.
+
+| Exemplo | O que faz |
 |---|---|
 | `2d6` | Rola 2 dados de 6 lados |
-| `d20` | Rola 1 dado de 20 lados |
-| `2d6+5` | Rola e soma modificador |
-| `1d6*1d4` | Operação entre dados |
+| `1d20+5` | Rola com modificador |
 | `(d20+5)*2` | Expressão com parênteses |
-| `4df` | Dado Fate (−, 0, +) |
-| `3#d6` | Repete 3 vezes sem somar |
-| `&15+3` | Expressão matemática pura |
-| `2d6+5 Ataque` | Rola com rótulo livre |
-| `1d20 iniciativa Ada` | Registra iniciativa de Ada |
+| `4df` | Dados Fate (−/0/+) |
+| `3#d6` | 3 grupos independentes |
+| `&15 dano Ada` | Aplica 15 de dano ao personagem Ada |
+| `1d20 iniciativa Ada` | Adiciona Ada na iniciativa com o resultado |
 
-Resultados são exibidos em ordem decrescente. Valores máximos e mínimos ficam em **negrito**.
-
-### Via comando
-```
-/rolar expressao:2d6+5
-!rolar 2d6+5
-```
+Também funciona em mensagens normais — veja [Rolagem em mensagens](#rolagem-em-mensagens).
 
 ---
 
-## Tags de Rolagem
+#### `/tag criar · deletar · listar`
 
-Tags são palavras escritas após a expressão de dados que alteram o comportamento da rolagem.
+Tags são atalhos para expressões de dados configuradas por servidor.
 
-### Tag embutida
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `criar nome: expressao: condicoes: exibicao:` | 🔒 | Cria ou atualiza uma tag |
+| `deletar nome:` | 🔒 | Remove uma tag |
+| `listar` | — | Lista todas as tags do servidor |
 
-| Tag | Comportamento |
-|---|---|
-| `crítico` | Rerola até sair o mínimo ou máximo do dado, exibindo todas as tentativas |
-
-### Gerenciar tags customizadas
-
-| Comando | O que faz |
-|---|---|
-| `/tag criar` | Cria ou atualiza uma tag (Mestre) |
-| `/tag deletar nome` | Remove uma tag (Mestre) |
-| `/tag listar` | Lista todas as tags ativas |
-
-### Condições disponíveis
+**Condições disponíveis para tags:**
 
 | Condição | Sintaxe | Comportamento |
 |---|---|---|
 | Mínimo | `min` | Para ao sair 1 |
 | Máximo | `max` | Para ao sair o valor máximo |
-| Mínimo ou Máximo | `minoumax` | Para ao sair 1 ou o máximo |
-| Valor específico | `valor:N` | Para ao sair N |
+| Min ou Max | `minoumax` | Para ao sair 1 ou o máximo |
+| Valor | `valor:N` | Para ao sair N |
 | Tentativas | `tentativas:N` | Para após N rolagens |
 | Gatilho | `gatilho:N:XdY` | Ao sair N, rola XdY como bônus |
-| Texto especial | `texto:N:Mensagem` | Ao sair N, exibe a mensagem |
+| Texto | `texto:N:Mensagem` | Ao sair N, exibe a mensagem |
 
-Múltiplas condições separadas por vírgula: `max, tentativas:5, gatilho:6:1d8`
+Múltiplas condições separadas por vírgula: `max,tentativas:5,gatilho:6:1d8`
 
-### Modos de exibição
-
-| Modo | Comportamento |
-|---|---|
-| `all` — Todas as tentativas | Exibe cada rolagem |
-| `allBest` — Todas + destacar o melhor | Idem, com destaque no maior resultado |
-
-### Exemplo completo
 ```
-/tag criar nome:explodir condicoes:max,tentativas:5,gatilho:6:1d8,texto:6:Acerto crítico! exibicao:Todas as tentativas
+/tag criar nome:explodir expressao:1d6 condicoes:max,tentativas:5 exibicao:all
 2d6 explodir Ada
 ```
 
 ---
 
-## Personagens
+### ⚔️ Combate
 
-| Comando | O que faz |
+#### `/personagem criar · editar · remover · ativar · ver · meus · listar`
+
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `criar nome: hp:` | 🔒 | Cria um personagem |
+| `editar nome:` | 🔒 | Edita atributos |
+| `remover nome:` | 🔒 | Remove permanentemente |
+| `ativar nome:` | — | Define seu personagem ativo na sessão |
+| `ver nome:` | — | Exibe HP, escudo e status |
+| `meus` | — | Lista seus personagens |
+| `listar` | — | Lista todos os personagens da sessão |
+
+**Opções extras de `criar` / `editar`:**
+
+| Opção | Descrição |
 |---|---|
-| `/personagem criar` | Cria um PC ou NPC base |
-| `/personagem ver nome` | Exibe HP, escudo e status |
-| `/personagem listar` | Lista todos os personagens da sessão |
-| `/personagem editar nome` | Atualiza atributos |
-| `/personagem remover nome` | Remove o personagem |
-| `/personagem ativar nome` | Define personagem ativo do jogador na sessão |
-| `/personagem meus` | Lista seus personagens em qualquer sessão |
-
-Busca por nome, emoji ou @menção do jogador.
-
-```
-/personagem criar nome:Ada hp:40 emoji:🧝 jogador:@fulano
-/personagem ver nome:Ada
-/personagem editar nome:Ada hp:50
-```
+| `emoji:` | Emoji representativo |
+| `time:` | Emoji de time (ex: 🟢 aliado, 🔴 inimigo) |
+| `jogador:` | @usuário associado |
+| `escudo:` | Escudo máximo |
+| `salvaguarda:` | Se o escudo bloqueia dano excedente |
+| `crit_threshold:` | Aviso quando HP ≤ N |
+| `overheal:` | O que fazer com cura além do HP máximo (`cap` ou `shield`) |
 
 ---
 
-## HP e Combate Direto
+#### `/npc criar · ver · editar · replicar · resetar · listar · remover`
 
-| Comando | O que faz |
-|---|---|
-| `/dano personagem valor` | Aplica dano (processa escudo antes do HP) |
-| `/curar personagem valor` | Cura o personagem |
-| `/escudo personagem valor` | Define o valor do escudo |
-| `/vida personagem valor` | Define HP diretamente |
-
-```
-/dano personagem:Ada valor:10
-/curar personagem:Ada valor:5
-/escudo personagem:Baruk valor:8
-/vida personagem:Ada valor:40
-```
-
-Atalho por mensagem:
-```
-!dano personagem:Ada valor:10
-```
-
----
-
-## NPCs
-
-| Comando | O que faz |
-|---|---|
-| `/npc criar nome hp` | Cria um NPC base |
-| `/npc ver nome` | Exibe status do NPC |
-| `/npc editar nome` | Atualiza atributos |
-| `/npc replicar nome quantidade` | Cria cópias independentes |
-| `/npc resetar nome` | Restaura HP máximo e zera status |
-| `/npc listar` | Lista todos os NPCs com HP e status |
-| `/npc remover nome` | Remove um ou mais NPCs |
-
-`resetar` e `remover` aceitam nome exato, prefixo de grupo (ex: `Goblin` afeta todos que começam com "Goblin") ou `todos`.
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `criar nome: hp:` | 👑 | Cria um NPC |
+| `ver nome:` | — | Exibe status do NPC |
+| `editar nome:` | 👑 | Edita atributos |
+| `replicar nome: quantidade:` | 👑 | Cria N cópias independentes (Goblin A, B, C...) |
+| `resetar nome:` | 👑 | Restaura HP e escudo ao máximo |
+| `listar` | — | Lista todos com HP (🟢 >50% · 🟡 >25% · 🔴 ≤25%) |
+| `remover nome:` | 👑 | Remove (aceita prefixo de grupo ou `todos`) |
 
 ```
 /npc replicar nome:Goblin quantidade:3 sufixos:A,B,C
-/npc resetar nome:Goblin
+/npc resetar nome:Goblin   ← reseta todos que começam com "Goblin"
 /npc remover nome:todos
 ```
 
-O `/npc listar` agrupa por prefixo e exibe indicadores de HP: 🟢 >50% · 🟡 >25% · 🔴 ≤25%.
+---
+
+#### `/dano · /curar · /escudo · /vida`
+
+| Comando | Descrição |
+|---|---|
+| `/dano personagem: valor:` | Aplica dano (escudo absorve primeiro) |
+| `/curar personagem: valor:` | Cura o personagem |
+| `/escudo personagem: valor:` | Define o valor do escudo manualmente |
+| `/vida personagem: valor:` | Define HP atual diretamente |
+
+Busca por nome, emoji ou @menção do jogador.
 
 ---
 
-## Status
+#### `/status aplicar · remover · ver`
 
-### Aplicar
-```
-/status aplicar personagem:Ada nome:Veneno duracao:3 efeito:dano valor:5
-/status aplicar personagem:Baruk nome:"Escudo Arcano" efeito:escudo valor:10
-/status aplicar personagem:Ada nome:Amaldiçoado
-```
+| Subcomando | Descrição |
+|---|---|
+| `aplicar personagem: nome: duracao: efeito: valor: fonte:` | Aplica efeito de status |
+| `remover personagem: nome:` | Remove um status específico |
+| `ver personagem:` | Lista os status ativos |
 
 | Parâmetro | Descrição |
 |---|---|
-| `duracao` | Duração em rodadas — omitir = permanente |
-| `efeito` | `dano`, `cura` ou `escudo` aplicado por rodada |
-| `valor` | Obrigatório se efeito definido |
-| `fonte` | Nota sobre a origem do status |
+| `duracao:` | Duração em rodadas — omitir = permanente |
+| `efeito:` | `dano`, `cura` ou `escudo` por rodada |
+| `valor:` | Obrigatório se `efeito:` definido |
+| `fonte:` | Nota sobre a origem |
 
-### Remover e ver
 ```
+/status aplicar personagem:Ada nome:Veneno duracao:3 efeito:dano valor:5
 /status remover personagem:Ada nome:Veneno
-/status ver personagem:Ada
-```
-
-Os efeitos são processados automaticamente a cada rodada ao avançar o turno.
-
----
-
-## Iniciativa
-
-### Registro por mensagem (jogadores)
-```
-1d20 iniciativa Ada
-2d6 iniciativa
-```
-
-### Gerenciamento pelo Mestre
-
-| Comando | O que faz |
-|---|---|
-| `/iniciativa adicionar nome valor` | Adiciona NPC/inimigo com valor fixo |
-| `/iniciativa remover nome` | Remove todas as entradas com esse nome |
-| `/iniciativa limpar` | Reseta toda a ordem |
-| `/iniciativa ver` | Exibe a ordem atual |
-
-O parâmetro `slots` permite que um NPC tenha múltiplos turnos por rodada:
-```
-/iniciativa adicionar nome:Dracolich valor:20 tipo:inimigo slots:2
 ```
 
 ---
 
-## Turnos
+#### `/iniciativa adicionar · remover · limpar · ver`
 
-| Comando | O que faz |
+| Subcomando | Descrição |
 |---|---|
-| `/turno iniciar` | Ordena por iniciativa e inicia o combate |
-| `/turno avancar` | Avança para o próximo participante |
-| `/turno ver` | Exibe o tracker atual (mensagem privada) |
-| `/turno adicionar nome valor` | Adiciona participante ao combate em andamento |
-| `/turno remover nome` | Remove participante do combate |
-| `/turno encerrar` | Encerra o combate e limpa a ordem |
+| `adicionar nome: valor:` | Adiciona entrada na ordem (fixo para NPCs) |
+| `remover nome:` | Remove entradas com esse nome |
+| `limpar` | Reseta toda a ordem |
+| `ver` | Exibe a ordem atual |
 
-O tracker exibe: número da rodada, ordem completa com o turno atual em **negrito**, status ativos do personagem que está jogando e efeitos que ele está causando em outros.
+Jogadores podem registrar iniciativa diretamente em mensagens: `1d20 iniciativa Ada`
 
-Ao virar a rodada, os efeitos de status (dano/cura/escudo por rodada) são processados automaticamente e os expirados são anunciados.
+O parâmetro `slots:` permite múltiplos turnos por rodada para um mesmo NPC.
 
 ---
 
-## Mapa
+#### `/turno iniciar · avancar · encerrar · ver · adicionar · remover`
 
-### Criar e editar
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `iniciar` | 🔒 | Ordena pela iniciativa e inicia o combate |
+| `avancar` | 🔒 | Avança para o próximo turno e processa status |
+| `encerrar` | 🔒 | Encerra o combate e limpa a ordem |
+| `ver` | — | Exibe o tracker atual |
+| `adicionar nome: valor:` | 🔒 | Adiciona participante ao combate em andamento |
+| `remover nome:` | 🔒 | Remove participante do combate |
 
-| Comando | O que faz |
-|---|---|
-| `/mapa criar id nome colunas linhas` | Cria um novo mapa vazio |
-| `/mapa linha numero tipos` | Preenche uma linha inteira |
-| `/mapa coluna letra tipos` | Preenche uma coluna inteira |
-| `/mapa submatriz de ate tipos` | Preenche uma região retangular |
-| `/mapa celula pos tipo` | Altera uma célula individual |
-| `/mapa legenda emoji descricao` | Adiciona entrada na legenda |
-| `/mapa carregar id` | Troca o mapa ativo da sessão |
+O tracker exibe a ordem completa, o participante atual em destaque, status ativos e efeitos aplicando. Ao virar a rodada, status com duração são decrementados e os expirados são anunciados.
 
-```
-/mapa criar id:arena nome:Arena colunas:6 linhas:5 padrao:⬜
-/mapa linha numero:1 tipos:⬛,⬜,⬜,⬜,⬜,⬛
-/mapa submatriz de:B2 ate:D4 tipos:🟥,🟥,🟥,🟥,🟥,🟥,🟥,🟥,🟥
-```
-
-### Exibição
-
-| Comando | O que faz |
-|---|---|
-| `/mapa mostrar` | Posta o mapa no canal |
-| `/mapa atualizar` | Força re-renderização da mensagem |
-| `/mapa config` | Personagens no grid ou apenas no texto, visibilidade de painéis |
-
-### Movimentação
-
-| Comando | O que faz |
-|---|---|
-| `/mapa mover emoji celula` | Move personagem para uma célula |
-| `/mapa cobertura emoji [nota]` | Alterna cobertura do personagem |
-| `/mapa inimigo mover nome pos` | Move inimigo ou marca como "fora" |
-| `/mapa efeito id valor` | Atualiza efeito de turno (ex: nível da água) |
-
-### Painéis de personagens, NPCs, inimigos e itens
-
-Cada entidade tem subcomandos `adicionar`, `remover` e `posicao`:
-
-```
-/mapa personagem adicionar emoji:🧝 nome:Ada local:C3
-/mapa npc adicionar nome:Goblin local:E5
-/mapa inimigo adicionar nome:Dragão quantidade:1 local:B2
-/mapa item adicionar label:Tocha celula:A1 emoji:🔦
-```
+Configure o canal e o comportamento do tracker em `/config canal` e `/config tracker`.
 
 ---
 
-## Sessão RPG
+### 🗺️ Mapa
 
-| Comando | O que faz |
-|---|---|
-| `/rpg criar id` | Cria uma sessão e vincula ao canal atual |
-| `/rpg entrar id` | Vincula outro canal à sessão existente |
-| `/rpg encerrar` | Desvincula o canal da sessão |
-| `/rpg listar` | Lista todas as sessões do servidor |
-| `/rpg status estado` | Altera estado da sessão (online/offline) |
-| `/rpg deletar id` | Remove a sessão permanentemente |
-| `/rpg configurar` | Ajusta exibição do tracker e modo de decremento |
+#### `/mapa mostrar · atualizar · listar · terreno · remover`
+
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `mostrar` | — | Exibe o mapa ativo no canal configurado |
+| `atualizar` | 🔒 | Força re-renderização da mensagem do mapa |
+| `listar` | — | Lista os mapas disponíveis na sessão |
+| `terreno tipo: x: y:` | 👑 | Define o terreno de uma célula do grid |
+| `remover nome:` | 👑 | Remove um elemento do mapa |
+
+O mapa é um grid de até 10×10 células. Colunas usam emojis regionais (🇦–🇯) e linhas usam emojis numéricos (1️⃣–🔟).
 
 ---
 
-## Configurações
+### 🎵 Música
 
-| Comando | O que faz |
+O bot entra no canal de voz do usuário ao usar `/play`. Todos os estados de fila e conexão são isolados por servidor.
+
+#### Comandos de reprodução
+
+| Comando | Descrição |
 |---|---|
-| `/config ver` | Exibe todas as configurações atuais |
-| `/config prefixo` | Muda o prefixo de texto do servidor (Mestre) |
-| `/config canal destino canal` | Define canal de saída para mapa ou tracker |
-| `/config tracker fixo decremento` | Configura modo do tracker e decremento de status |
+| `/play query:` | Toca música, playlist ou álbum (YouTube ou Spotify) |
+| `/pause` | Pausa a reprodução |
+| `/resume` | Retoma a reprodução pausada |
+| `/skip` | Pula para a próxima faixa |
+| `/back` | Volta para a faixa anterior |
+| `/restart` | Reinicia a faixa atual do início |
+| `/stop` | Para a música, limpa a fila e sai do canal de voz |
 
-### Canal de saída
-Permite separar as mensagens do bot do canal de rolagens:
+#### Fila
+
+| Comando | Descrição |
+|---|---|
+| `/queue` | Exibe a fila paginada (10 faixas por página) |
+| `/remove posicao:` | Remove uma faixa da fila pelo número |
+| `/shuffle` | Embaralha a ordem da fila |
+| `/clear` | Limpa a fila sem parar a faixa atual |
+
+**Formatos aceitos pelo `/play`:**
+
+| Entrada | Exemplo |
+|---|---|
+| Busca por texto | `lofi hip hop` |
+| Vídeo do YouTube | `https://youtube.com/watch?v=...` |
+| Playlist do YouTube | `https://youtube.com/playlist?list=...` |
+| Faixa do Spotify | `https://open.spotify.com/track/...` |
+| Playlist do Spotify | `https://open.spotify.com/playlist/...` |
+| Álbum do Spotify | `https://open.spotify.com/album/...` |
+
+Playlists com mais de 500 faixas exibem um botão **"Carregar mais músicas"** para continuar o carregamento em lotes. Faixas do Spotify são resolvidas via YouTube só quando chegam a vez de tocar (lazy resolution).
+
+---
+
+### 🗂️ Sessão RPG
+
+#### `/rpg criar · entrar · encerrar · listar · status · deletar · configurar`
+
+Um servidor pode ter múltiplas sessões. Cada canal é vinculado a uma por vez.
+
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `criar id:` | 🔒 | Cria uma sessão e vincula ao canal atual |
+| `entrar id:` | 🔒 | Vincula o canal a uma sessão existente |
+| `encerrar` | — | Desvincula o canal da sessão (sessão continua existindo) |
+| `listar` | — | Lista todas as sessões do servidor |
+| `status estado:` | 👑 | Altera o status da sessão (🟢 Ativa / 🔴 Offline) |
+| `deletar id:` | 👑 | Deleta uma sessão permanentemente |
+| `configurar` | 👑 | Exibição de status/efeitos no tracker e modo de decremento |
+
+---
+
+### ⚙️ Configurações
+
+#### `/config ver · cargo-mestre · canal · prefixo · listener-dado · tracker`
+
+| Subcomando | Permissão | Descrição |
+|---|---|---|
+| `ver` | 🔒 | Exibe todas as configurações atuais do servidor |
+| `cargo-mestre cargo:` | Admin | Define o cargo com permissões de Mestre |
+| `canal destino: canal:` | 🔒 | Define canal de saída para mapa ou tracker |
+| `prefixo prefixo:` | 🔒 | Muda o prefixo de comandos de texto |
+| `listener-dado estado:` | 🔒 | Ativa ou desativa a rolagem automática em mensagens |
+| `tracker fixo: decremento:` | 🔒 | Configura modo fixo e decremento de status do tracker |
+
+**`/config cargo-mestre`** — requer Administrador. Define qual cargo tem permissões de Mestre no servidor. Sem configuração, usa o fallback por nome via `MASTER_ROLE` no `.env`.
+
+**`/config canal`** — permite separar o canal das mensagens do bot do canal de rolagens:
 ```
 /config canal destino:mapa canal:#canal-mapa
 /config canal destino:tracker canal:#canal-combate
 ```
 
-### Tracker fixo
-```
-/config tracker fixo:Sim
-```
-Com tracker fixo ativo, o bot edita sempre a mesma mensagem em vez de postar uma nova a cada turno.
+**`/config tracker fixo:Sim`** — o bot edita sempre a mesma mensagem do tracker em vez de postar uma nova a cada turno.
 
-### Decremento de status
-```
-/config tracker decremento:Por rodada
-/config tracker decremento:Por turno
-```
-- **Por rodada** — todos os status decrementam juntos ao virar a rodada
-- **Por turno** — cada personagem decrementa seus status ao fim do próprio turno
+**`/config tracker decremento:`**
+- `Por rodada` — todos os status decrementam juntos ao virar a rodada
+- `Por turno` — cada personagem decrementa seus status ao fim do próprio turno
+
+**`/config listener-dado`** — controla se o bot responde a dados escritos em mensagens normais:
+- `Ativo` — responde a `2d6`, `1d20+5` etc. em qualquer mensagem
+- `Inativo` — ignora mensagens; use `/rolar` ou o prefixo de texto
+
+A configuração é salva por servidor no MongoDB e persiste entre reinicializações.
 
 ---
 
-## Música
+#### `/help`
 
-O bot entra no canal de voz do usuário automaticamente ao usar `/play`. Aceita links do YouTube, Spotify e buscas por texto.
-
-### Tocar
-
-| Comando | O que faz |
-|---|---|
-| `/play query` | Toca uma música, playlist ou álbum |
-
-**Tipos de entrada aceitos:**
-
-| Entrada | Exemplo |
-|---|---|
-| Nome/busca | `/play lofi hip hop` |
-| Link de vídeo do YouTube | `/play https://youtube.com/watch?v=...` |
-| Playlist do YouTube | `/play https://youtube.com/playlist?list=...` |
-| Faixa do Spotify | `/play https://open.spotify.com/track/...` |
-| Playlist do Spotify | `/play https://open.spotify.com/playlist/...` |
-| Álbum do Spotify | `/play https://open.spotify.com/album/...` |
-
-Para playlists com mais de 500 músicas, o bot carrega as primeiras 500 e exibe um botão **➕ Carregar mais músicas** para adicionar o restante em lotes.
-
-### Controles de reprodução
-
-| Comando | O que faz |
-|---|---|
-| `/pause` | Pausa a música atual |
-| `/resume` | Retoma a música pausada |
-| `/skip` | Pula para a próxima música da fila |
-| `/back` | Volta para a música anterior |
-| `/restart` | Recomeça a música atual do início |
-| `/stop` | Para a música, limpa a fila e sai do canal |
-
-### Fila
-
-| Comando | O que faz |
-|---|---|
-| `/queue [pagina]` | Exibe a fila com paginação (10 músicas por página) |
-| `/remove posicao` | Remove uma música da fila pelo número |
-| `/clear` | Limpa toda a fila (a música atual continua tocando) |
-| `/shuffle` | Embaralha a ordem da fila |
-
-```
-/play lofi hip hop
-/queue pagina:2
-/remove posicao:3
-```
+Exibe a lista completa de comandos disponíveis com link para a documentação.
 
 ---
 
-## Estrutura de Arquivos
+## Comandos de texto (prefixo)
+
+Todos os slash commands funcionam também via mensagem com o prefixo configurado (padrão `!`).
+
+**Formato:**
+```
+!comando subcomando chave:valor chave:"valor com espaço"
+```
+
+**Exemplos:**
+```
+!play Bohemian Rhapsody
+!rolar 2d6+3
+!personagem criar nome:"Ada de Andrade" hp:30
+!turno avancar
+!config ver
+!npc replicar nome:Goblin quantidade:3
+```
+
+**Comandos exclusivos de texto:**
+
+| Comando | Permissão | Descrição |
+|---|---|---|
+| `!help` / `!ajuda` | — | Lista os comandos no formato de texto |
+| `!setprefix <novo>` | 🔒 | Muda o prefixo do servidor |
+
+O alias `!p` funciona como atalho para `!play`.
+
+---
+
+## Rolagem em mensagens
+
+Quando o **listener de dados está ativo** (`/config listener-dado estado:Ativo`), o bot detecta expressões de dados em mensagens normais sem precisar de prefixo ou slash:
+
+| Expressão | O que faz |
+|---|---|
+| `2d6` | Rola 2d6 e responde no chat |
+| `1d20+5 Ataque` | Rola com rótulo |
+| `4df` | Dados Fate |
+| `2d6 dano Ada` | Aplica dano ao personagem Ada |
+| `1d20 iniciativa Ada` | Adiciona Ada na iniciativa |
+
+Mensagens que começam com o prefixo do servidor (`!`), com prefixos de outros bots (`/`, `?`, `.`, `-`) ou que sejam comandos de prefixo são ignoradas pelo listener para evitar resposta dupla.
+
+Use `/config listener-dado estado:Inativo` para desativar servidor por servidor.
+
+---
+
+## Estrutura de arquivos
 
 ```
 chaos-rpg-bot/
-├── index.js                   ← entry point, registro de comandos e eventos
-├── .env                       ← variáveis de ambiente (não versionar)
+├── Dockerfile                     ← build para Railway (python3, ffmpeg, libopus)
+├── nixpacks.toml                  ← configuração de build alternativa (legado)
+├── index.js                       ← entry point, registro de comandos e eventos
+├── deploy-commands.js             ← registro manual de slash commands (opcional)
+├── .env.example                   ← template de variáveis de ambiente
 ├── package.json
+│
 ├── commands/
-│   ├── combat/                ← turno, iniciativa, status, vida, personagem, npc
-│   ├── config/                ← config, help
-│   ├── dice/                  ← rolar, tag
-│   ├── map/                   ← mapa
-│   ├── music/                 ← play, pause, resume, skip, stop, queue,
-│   │                             remove, clear, shuffle, restart, back
-│   └── rpg/                   ← rpg
+│   ├── combat/                    ← turno, iniciativa, status, vida, personagem, npc
+│   ├── config/                    ← config, help
+│   ├── dice/                      ← rolar, tag
+│   ├── map/                       ← mapa
+│   ├── music/                     ← play, pause, resume, skip, back, restart,
+│   │                                 stop, queue, remove, clear, shuffle
+│   └── rpg/                       ← rpg
+│
 ├── listeners/
-│   ├── messageRoll.js         ← detector de dados em mensagens
-│   └── prefixListener.js      ← comandos com prefixo de texto
+│   ├── messageRoll.js             ← detector de dados em mensagens (togglável por guild)
+│   └── prefixListener.js          ← comandos com prefixo de texto
+│
 ├── utils/
-│   ├── musicPlayer.js         ← player de música (yt-dlp + ffmpeg + Spotify API)
-│   ├── diceParser.js          ← parser de expressões de dados
-│   ├── diceFormatter.js       ← formatação dos resultados
-│   ├── tagEngine.js           ← motor de tags customizadas
-│   ├── combatEngine.js        ← dano, cura, escudo, eventos
-│   ├── turnRenderer.js        ← formatação do tracker de turno
-│   ├── prefixStore.js         ← prefixo por servidor
-│   ├── textInteraction.js     ← adapter mensagem → slash command
-│   └── db.js                  ← conexão MongoDB
+│   ├── musicPlayer.js             ← player (yt-dlp + ffmpeg + Spotify API)
+│   ├── rpgSessionStore.js         ← múltiplas sessões por servidor
+│   ├── guildSettingsStore.js      ← settings por servidor (masterRole, diceListener...)
+│   ├── characterStore.js          ← personagens e NPCs
+│   ├── mapStore.js                ← mapas
+│   ├── tagStore.js                ← tags customizadas
+│   ├── prefixStore.js             ← prefixo por servidor
+│   ├── sessionResolver.js         ← isMaster, isSessionMaster, resolveOrReply
+│   ├── textInteraction.js         ← adapter mensagem → slash command
+│   ├── diceParser.js              ← parser de expressões de dados
+│   ├── diceFormatter.js           ← formatação dos resultados
+│   ├── combatEngine.js            ← dano, cura, escudo, eventos
+│   ├── statusEngine.js            ← processamento de status por turno/rodada
+│   ├── turnRenderer.js            ← formatação do tracker de turno
+│   ├── mapRenderer.js             ← renderização do grid de mapa
+│   └── db.js                      ← conexão MongoDB
+│
 ├── scripts/
-│   ├── spotify-auth.js        ← geração do refresh token do Spotify (executar uma vez)
-│   └── spotify-callback.html  ← página de callback para GitHub Pages
-├── bin/
-│   └── yt-dlp(.exe)           ← baixado automaticamente na primeira execução
-└── data/                      ← arquivos JSON (modo local, USE_LOCAL_DATA=true)
-    ├── session.json
+│   ├── spotify-auth.js            ← gera o refresh token do Spotify (executar uma vez)
+│   └── spotify-callback.html      ← página de callback para GitHub Pages
+│
+└── data/                          ← JSON local (USE_LOCAL_DATA=true, ignorado pelo git)
     ├── rpg_sessions.json
+    ├── channel_sessions.json
+    ├── tags.json
+    ├── characters.json
     └── maps/
 ```
