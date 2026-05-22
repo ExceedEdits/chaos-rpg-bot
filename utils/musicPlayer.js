@@ -20,8 +20,13 @@ const { spawn } = require('child_process');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 
 // ── yt-dlp ───────────────────────────────────────────────────
+// No Windows (dev local) o binário fica em bin/ junto ao projeto.
+// No Linux (Railway, Render, VPS) bin/ é somente-leitura — usa /tmp,
+// que é sempre gravável em ambientes de contêiner.
 const _BIN_NAME = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-const _BIN_PATH = path.join(__dirname, '..', 'bin', _BIN_NAME);
+const _BIN_PATH = process.platform === 'win32'
+  ? path.join(__dirname, '..', 'bin', _BIN_NAME)
+  : path.join('/tmp', _BIN_NAME);
 let _ytDlpReady = false;
 
 async function _ensureYtDlp() {
