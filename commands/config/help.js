@@ -18,6 +18,7 @@ function buildHelp(commands, prefix) {
   const lines = [
     '**Chaos RPG Bot** — Referência de Comandos',
     `Prefixo de texto: \`${prefix}\` · Slash commands: \`/\``,
+    '📖 Documentação completa: https://exceededits.github.io/chaos-rpg-site/',
     '',
   ];
 
