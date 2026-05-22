@@ -58,7 +58,7 @@ function renderMap(mapData, session) {
 
   // Cabeçalho: `0x` | 🇦 | 🇧 | 🇨 ...
   // O rótulo da coluna de índice é fixo em 2 chars para alinhar com os números de linha.
-  lines.push(['`0x`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
+  lines.push(['`xx`', ...mapData.cols.map(c => toRegional(c))].join(' | '));
 
   // ── Grid ─────────────────────────────────────────────────────
   // Monta índice emoji→célula para acesso O(1) durante a renderização

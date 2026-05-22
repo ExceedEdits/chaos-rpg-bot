@@ -249,14 +249,14 @@ const data = new SlashCommandBuilder()
       .setRequired(true))
     .addIntegerOption(o => o
       .setName('colunas')
-      .setDescription('Número de colunas — gera A, B, C… (1–20)')
+      .setDescription('Número de colunas — gera A, B, C… (1–15)')
       .setRequired(true)
-      .setMinValue(1).setMaxValue(20))
+      .setMinValue(1).setMaxValue(15))
     .addIntegerOption(o => o
       .setName('linhas')
-      .setDescription('Número de linhas — gera 1, 2, 3… (1–10)')
+      .setDescription('Número de linhas — gera 1, 2, 3… (1–15)')
       .setRequired(true)
-      .setMinValue(1).setMaxValue(10))
+      .setMinValue(1).setMaxValue(15))
     .addStringOption(o => o
       .setName('padrao')
       .setDescription('Emoji padrão de todas as células (padrão: ⬜)')))
