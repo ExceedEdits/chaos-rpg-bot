@@ -3,7 +3,7 @@
 //  Configurações de servidor e de sessão ativa.
 // ============================================================
 
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, MessageFlags } = require('discord.js');
 const rpgStore              = require('../../utils/rpgSessionStore');
 const { resolveOrReply,
         isMaster }          = require('../../utils/sessionResolver');
@@ -91,7 +91,7 @@ async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // ── cargo-mestre — apenas administradores ─────────────────
   if (sub === 'cargo-mestre') {

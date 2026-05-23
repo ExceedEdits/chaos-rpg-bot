@@ -3,7 +3,7 @@
 //  Volta ao começo da música atual.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getState, restartCurrent } = require('../../utils/musicPlayer');
 
 const data = new SlashCommandBuilder()
@@ -14,7 +14,7 @@ async function execute(interaction) {
   const state = getState(interaction.guild.id);
 
   if (!state?.currentTrack) {
-    return interaction.reply({ content: '❌ Nada está tocando no momento.', ephemeral: true });
+    return interaction.reply({ content: '❌ Nada está tocando no momento.', flags: MessageFlags.Ephemeral });
   }
 
   await interaction.deferReply();

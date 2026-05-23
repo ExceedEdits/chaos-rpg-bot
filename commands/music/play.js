@@ -5,7 +5,7 @@
 //  link de faixa/playlist/álbum do Spotify.
 // ============================================================
 
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const {
   getState,
   resolveQuery,
@@ -29,7 +29,7 @@ async function execute(interaction) {
   // Usuário deve estar em um canal de voz
   const voiceChannel = member.voice?.channel;
   if (!voiceChannel) {
-    return interaction.reply({ content: '❌ Entre em um canal de voz primeiro.', ephemeral: true });
+    return interaction.reply({ content: '❌ Entre em um canal de voz primeiro.', flags: MessageFlags.Ephemeral });
   }
 
   // Se o bot já está em outro canal desta guild, bloqueia
@@ -39,7 +39,7 @@ async function execute(interaction) {
     if (botChannelId && botChannelId !== voiceChannel.id) {
       return interaction.reply({
         content: `❌ Já estou tocando em <#${botChannelId}>. Entre nesse canal ou use \`/stop\` primeiro.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -93,7 +93,7 @@ async function execute(interaction) {
       await addManyToQueue(guild.id, tracks, voiceChannel, interaction.channel);
     } catch (err) {
       console.error('[Music] addManyToQueue error:', err);
-      await interaction.followUp({ content: '❌ Não foi possível conectar ao canal de voz.', ephemeral: true });
+      await interaction.followUp({ content: '❌ Não foi possível conectar ao canal de voz.', flags: MessageFlags.Ephemeral });
     }
     return;
   }

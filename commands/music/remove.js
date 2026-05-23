@@ -3,7 +3,7 @@
 //  Remove uma música específica da fila pelo número.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getState }            = require('../../utils/musicPlayer');
 
 const data = new SlashCommandBuilder()
@@ -19,7 +19,7 @@ async function execute(interaction) {
   const state = getState(interaction.guild.id);
 
   if (!state || state.queue.length === 0) {
-    return interaction.reply({ content: '📭 A fila está vazia.', ephemeral: true });
+    return interaction.reply({ content: '📭 A fila está vazia.', flags: MessageFlags.Ephemeral });
   }
 
   const pos = interaction.options.getInteger('posicao');
@@ -27,7 +27,7 @@ async function execute(interaction) {
   if (pos > state.queue.length) {
     return interaction.reply({
       content: `❌ Posição inválida. A fila tem **${state.queue.length}** música(s). Use \`/queue\` para ver.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 

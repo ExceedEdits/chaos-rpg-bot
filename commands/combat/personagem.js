@@ -4,7 +4,7 @@
 //  Personagem ativo é por sessão.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const characterStore          = require('../../utils/characterStore');
 const rpgStore                = require('../../utils/rpgSessionStore');
 const { resolveOrReply,
@@ -75,7 +75,7 @@ async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const master  = await isMaster(interaction.member);
 

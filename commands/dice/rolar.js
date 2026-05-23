@@ -2,7 +2,7 @@
 //  Chaos RPG Bot — /rolar
 // ============================================================
 
-const { SlashCommandBuilder }                    = require('discord.js');
+const { SlashCommandBuilder, MessageFlags }       = require('discord.js');
 const { parse, parseExpression, buildExprLabel } = require('../../utils/diceParser');
 const { format }                                 = require('../../utils/diceFormatter');
 const tagStore                                   = require('../../utils/tagStore');
@@ -27,7 +27,7 @@ async function execute(interaction) {
   if (!parsed) {
     await interaction.reply({
       content: `❌ Não entendi \`${raw}\`. Exemplos: \`2d6\`, \`2d6+1d4\`, \`(d20+5)*2\`, \`4df\`, \`3#d6\`, \`&2+5\``,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }

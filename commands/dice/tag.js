@@ -3,7 +3,7 @@
 //  Gerenciamento de tags customizadas (multi-guild, MongoDB)
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const tagStore = require('../../utils/tagStore');
 const { isMaster } = require('../../utils/sessionResolver');
 
@@ -113,7 +113,7 @@ async function execute(interaction) {
     const keys = Object.keys(tags);
 
     if (keys.length === 0) {
-      await interaction.reply({ content: '📭 Nenhuma tag customizada criada ainda.', ephemeral: true });
+      await interaction.reply({ content: '📭 Nenhuma tag customizada criada ainda.', flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -126,7 +126,7 @@ async function execute(interaction) {
       lines.push('');
     }
     lines.push(`*Use \`1d6 ${keys[0]}\` para testar.*`);
-    await interaction.reply({ content: lines.join('\n'), ephemeral: true });
+    await interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -134,7 +134,7 @@ async function execute(interaction) {
   if (!await isMaster(interaction.member)) {
     await interaction.reply({
       content: `❌ Você precisa do cargo de **Mestre** para gerenciar tags.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -145,13 +145,13 @@ async function execute(interaction) {
     const display  = interaction.options.getString('exibicao');
 
     if (!/^[\w\u00C0-\u017E-]+$/.test(nome)) {
-      await interaction.reply({ content: '❌ Nome inválido. Use apenas letras, números e hífens.', ephemeral: true });
+      await interaction.reply({ content: '❌ Nome inválido. Use apenas letras, números e hífens.', flags: MessageFlags.Ephemeral });
       return;
     }
 
     const conditions = parseConditions(condsRaw);
     if (typeof conditions === 'string') {
-      await interaction.reply({ content: `❌ ${conditions}`, ephemeral: true });
+      await interaction.reply({ content: `❌ ${conditions}`, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -175,7 +175,7 @@ async function execute(interaction) {
         '',
         `*Uso: \`1d6 ${nome}\`, \`2d8+2 ${nome} Ada\`, etc.*`,
       ].join('\n'),
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -186,7 +186,7 @@ async function execute(interaction) {
 
     await interaction.reply({
       content: ok ? `🗑️ Tag **${nome}** removida.` : `❌ Tag \`${nome}\` não encontrada.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }

@@ -3,7 +3,7 @@
 //  discord.js v14 | Node.js v18+
 // ============================================================
 
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, MessageFlags } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -131,12 +131,12 @@ client.on('interactionCreate', async (interaction) => {
     const offset = parseInt(offsetStr, 10);
 
     if (!type || !id || isNaN(offset)) {
-      return interaction.reply({ content: '❌ Dados do botão inválidos.', ephemeral: true });
+      return interaction.reply({ content: '❌ Dados do botão inválidos.', flags: MessageFlags.Ephemeral });
     }
 
     const voiceChannel = interaction.member?.voice?.channel;
     if (!voiceChannel) {
-      return interaction.reply({ content: '❌ Entre em um canal de voz primeiro.', ephemeral: true });
+      return interaction.reply({ content: '❌ Entre em um canal de voz primeiro.', flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferUpdate();
@@ -186,7 +186,7 @@ client.on('interactionCreate', async (interaction) => {
     await cmd.execute(interaction, client);
   } catch (err) {
     console.error(`[Chaos RPG] Erro em /${interaction.commandName}:`, err);
-    const msg = { content: '❌ Erro ao executar o comando.', ephemeral: true };
+    const msg = { content: '❌ Erro ao executar o comando.', flags: MessageFlags.Ephemeral };
     if (interaction.replied || interaction.deferred) await interaction.followUp(msg);
     else await interaction.reply(msg);
   }

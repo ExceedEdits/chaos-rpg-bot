@@ -4,7 +4,7 @@
 //  Use /rpg criar + /rpg entrar antes de usar comandos de mapa.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const rpgStore               = require('../../utils/rpgSessionStore');
 const { resolveOrReply, isSessionMaster } = require('../../utils/sessionResolver');
 const mapStore               = require('../../utils/mapStore');
@@ -414,7 +414,7 @@ async function execute(interaction) {
   const group   = interaction.options.getSubcommandGroup(false);
   const guildId = interaction.guildId;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // ── Sessão RPG obrigatória ────────────────────────────────────
   const resolved = await resolveOrReply(interaction);

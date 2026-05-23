@@ -5,7 +5,7 @@
 //  Apenas o dono ou admins podem alterar status, deletar e configurar.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const rpgStore = require('../../utils/rpgSessionStore');
 const { isMaster, isSessionMaster } = require('../../utils/sessionResolver');
 
@@ -88,7 +88,7 @@ async function execute(interaction) {
   const guildId = interaction.guildId;
   const chanId  = interaction.channelId;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // ── listar — sem restrição de cargo ───────────────────────
   if (sub === 'listar') {

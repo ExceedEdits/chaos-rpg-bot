@@ -3,7 +3,7 @@
 //  Exibe a fila atual com paginação (10 músicas por página).
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getState }            = require('../../utils/musicPlayer');
 
 const PER_PAGE = 10;
@@ -20,7 +20,7 @@ async function execute(interaction) {
   const state = getState(interaction.guild.id);
 
   if (!state?.currentTrack && (!state?.queue || state.queue.length === 0)) {
-    return interaction.reply({ content: '📭 Nada tocando e a fila está vazia.', ephemeral: true });
+    return interaction.reply({ content: '📭 Nada tocando e a fila está vazia.', flags: MessageFlags.Ephemeral });
   }
 
   const queue    = state.queue;

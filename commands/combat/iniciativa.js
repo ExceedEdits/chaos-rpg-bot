@@ -4,7 +4,7 @@
 //  valor fixo, suporta múltiplos turnos por NPC na mesma rodada.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const rpgStore       = require('../../utils/rpgSessionStore');
 const characterStore = require('../../utils/characterStore');
 const { resolveOrReply,
@@ -75,7 +75,7 @@ async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (sub !== 'ver' && !await isMaster(interaction.member)) {
     await interaction.editReply(`❌ Você precisa do cargo de **Mestre** para gerenciar a iniciativa.`);

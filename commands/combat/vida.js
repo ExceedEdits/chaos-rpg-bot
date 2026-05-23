@@ -3,7 +3,7 @@
 //  Comandos de combate — HP e escudo
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const characterStore = require('../../utils/characterStore');
 const { applyDamage, applyHeal, applyShield,
         formatEvents } = require('../../utils/combatEngine');
@@ -82,7 +82,7 @@ async function executeVida(interaction) {
   const query   = interaction.options.getString('personagem');
   const valor   = interaction.options.getInteger('valor');
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const char = await characterStore.find(guildId, query);
   if (!char) { await interaction.editReply(`❌ Personagem \`${query}\` não encontrado.`); return; }

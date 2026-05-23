@@ -5,7 +5,7 @@
 //  Leitura (ver, listar) não requer sessão.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const characterStore             = require('../../utils/characterStore');
 const { formatFullStatus }       = require('../../utils/statusEngine');
 const { resolveOrReply, requireSessionMaster } = require('../../utils/sessionResolver');
@@ -102,7 +102,7 @@ async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // ── ver — sem sessão, sem permissão especial ───────────────
   if (sub === 'ver') {

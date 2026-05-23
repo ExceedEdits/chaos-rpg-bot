@@ -4,7 +4,7 @@
 //  A faixa atual é devolvida ao início da fila.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getState, goBack } = require('../../utils/musicPlayer');
 
 const data = new SlashCommandBuilder()
@@ -15,11 +15,11 @@ async function execute(interaction) {
   const state = getState(interaction.guild.id);
 
   if (!state) {
-    return interaction.reply({ content: '❌ Não estou em nenhum canal de voz.', ephemeral: true });
+    return interaction.reply({ content: '❌ Não estou em nenhum canal de voz.', flags: MessageFlags.Ephemeral });
   }
 
   if (state.history.length === 0) {
-    return interaction.reply({ content: '📭 Não há músicas anteriores no histórico.', ephemeral: true });
+    return interaction.reply({ content: '📭 Não há músicas anteriores no histórico.', flags: MessageFlags.Ephemeral });
   }
 
   await interaction.deferReply();

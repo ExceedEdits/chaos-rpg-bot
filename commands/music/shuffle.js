@@ -3,7 +3,7 @@
 //  Embaralha a fila (Fisher-Yates).
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getState }            = require('../../utils/musicPlayer');
 
 const data = new SlashCommandBuilder()
@@ -14,11 +14,11 @@ async function execute(interaction) {
   const state = getState(interaction.guild.id);
 
   if (!state || state.queue.length === 0) {
-    return interaction.reply({ content: '📭 A fila está vazia.', ephemeral: true });
+    return interaction.reply({ content: '📭 A fila está vazia.', flags: MessageFlags.Ephemeral });
   }
 
   if (state.queue.length === 1) {
-    return interaction.reply({ content: '🔀 A fila tem apenas 1 música — nada a embaralhar.', ephemeral: true });
+    return interaction.reply({ content: '🔀 A fila tem apenas 1 música — nada a embaralhar.', flags: MessageFlags.Ephemeral });
   }
 
   // Fisher-Yates

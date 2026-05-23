@@ -2,6 +2,7 @@
 //  Chaos RPG Bot — Session Resolver + Permission Helpers
 // ============================================================
 
+const { MessageFlags } = require('discord.js');
 const rpgStore = require('./rpgSessionStore');
 const { getMasterRoleId } = require('./guildSettingsStore');
 
@@ -36,7 +37,7 @@ async function isSessionMaster(member, session) {
  */
 async function requireSessionMaster(interaction, session) {
   if (await isSessionMaster(interaction.member, session)) return true;
-  const msg = { content: '❌ Apenas o Mestre que criou esta sessão (ou um administrador) pode fazer isso.', ephemeral: true };
+  const msg = { content: '❌ Apenas o Mestre que criou esta sessão (ou um administrador) pode fazer isso.', flags: MessageFlags.Ephemeral };
   if (interaction.deferred || interaction.replied) await interaction.editReply(msg);
   else await interaction.reply(msg);
   return false;
@@ -59,7 +60,7 @@ async function resolveOrReply(interaction) {
   if (!resolved) {
     const msg = {
       content: '❌ Nenhuma sessão RPG ativa neste canal.\nUse `/rpg criar` para criar uma ou `/rpg entrar` para vincular uma existente.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     };
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply(msg);

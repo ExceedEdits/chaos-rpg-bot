@@ -3,7 +3,7 @@
 //  Gerencia o ciclo de combate — usa sessão ativa do canal.
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const characterStore          = require('../../utils/characterStore');
 const rpgStore                = require('../../utils/rpgSessionStore');
 const { resolveOrReply,
@@ -138,7 +138,7 @@ async function execute(interaction) {
 
   // Todos os subcomandos de turno respondem ephemerally:
   // o conteúdo do tracker vai para o canal via channel.send().
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const resolved = await resolveOrReply(interaction);
   if (!resolved) return;

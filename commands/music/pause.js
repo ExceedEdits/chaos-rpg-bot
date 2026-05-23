@@ -2,7 +2,7 @@
 //  Chaos RPG Bot — /pause
 // ============================================================
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { AudioPlayerStatus }   = require('@discordjs/voice');
 const { getState }            = require('../../utils/musicPlayer');
 
@@ -14,11 +14,11 @@ async function execute(interaction) {
   const state = getState(interaction.guild.id);
 
   if (!state?.currentTrack) {
-    return interaction.reply({ content: '❌ Nada está tocando no momento.', ephemeral: true });
+    return interaction.reply({ content: '❌ Nada está tocando no momento.', flags: MessageFlags.Ephemeral });
   }
 
   if (state.player.state.status === AudioPlayerStatus.Paused) {
-    return interaction.reply({ content: '⏸️ Já está pausado. Use `/resume` para retomar.', ephemeral: true });
+    return interaction.reply({ content: '⏸️ Já está pausado. Use `/resume` para retomar.', flags: MessageFlags.Ephemeral });
   }
 
   state.player.pause();
