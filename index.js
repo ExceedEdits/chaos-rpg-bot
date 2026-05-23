@@ -209,17 +209,15 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 // ── Handlers globais de erro ──────────────────────────────────
 // Evita que o bot caia silenciosamente no Railway por uma promise
 // rejeitada não tratada ou por uma exceção inesperada.
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('[Chaos RPG] Unhandled Promise Rejection:', reason);
-  // Não encerramos o processo — apenas logamos. Rejeições em comandos
-  // individuais não devem derrubar o bot inteiro.
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('[Chaos RPG] Uncaught Exception:', err);
-  // Exceções síncronas não capturadas são fatais — encerramos para que o
-  // Railway reinicie o contêiner automaticamente.
-  process.exit(1);
+  console.error('[Chaos RPG] Uncaught Exception:', err.message);
+  // Não encerramos o processo em erros de rede/DNS (ex: MongoDB indisponível)
+  // para evitar loop de restart no Railway. O bot continua operando para
+  // comandos que não dependem do banco.
 });
 
 // ── Inicia ────────────────────────────────────────────────────

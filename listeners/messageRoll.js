@@ -17,33 +17,35 @@ const IGNORED_PREFIXES = ['/', '!', '?', '.', '-'];
 
 function registerMessageRoll(client) {
   client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-    if (!message.guildId)   return;
-
-    // Verifica se o listener de dados está ativo neste servidor
-    const enabled = await getDiceListener(message.guildId);
-    if (!enabled) return;
-
-    const raw = message.content.trim();
-    if (!raw) return;
-
-    // Ignora prefixos fixos de bots comuns
-    if (IGNORED_PREFIXES.some(p => raw.startsWith(p))) return;
-
-    // Ignora o prefixo configurado para este servidor — essas mensagens
-    // já são tratadas pelo prefixListener e não devem gerar double reply.
-    const guildPrefix = await getPrefix(message.guildId);
-    if (raw.startsWith(guildPrefix)) return;
-
-    const customTags = await tagStore.getAll(message.guildId);
-    const parsed     = parse(raw, customTags);
-    if (!parsed) return;
-
-    const value     = parsed.results[0].total;
-    const rollLabel = `\`${parsed.results[0].notation}\` → ${parsed.results[0].label}`;
-
+    // Todo o handler está dentro de try/catch para que falhas de MongoDB
+    // (ou qualquer outro erro assíncrono) nunca virem uncaughtException.
     try {
-      // ── Iniciativa ────────────────────────────────────────────
+      if (message.author.bot) return;
+      if (!message.guildId)   return;
+
+      // Verifica se o listener de dados está ativo neste servidor
+      const enabled = await getDiceListener(message.guildId);
+      if (!enabled) return;
+
+      const raw = message.content.trim();
+      if (!raw) return;
+
+      // Ignora prefixos fixos de bots comuns
+      if (IGNORED_PREFIXES.some(p => raw.startsWith(p))) return;
+
+      // Ignora o prefixo configurado para este servidor — essas mensagens
+      // já são tratadas pelo prefixListener e não devem gerar double reply.
+      const guildPrefix = await getPrefix(message.guildId);
+      if (raw.startsWith(guildPrefix)) return;
+
+      const customTags = await tagStore.getAll(message.guildId);
+      const parsed     = parse(raw, customTags);
+      if (!parsed) return;
+
+      const value     = parsed.results[0].total;
+      const rollLabel = `\`${parsed.results[0].notation}\` → ${parsed.results[0].label}`;
+
+      // ── Iniciativa ──────────────────────────────────────────────
       if (parsed.initiativeTag) {
         const msg = await handleInitiative(
           message.guildId, message.channelId, value, rollLabel,
@@ -54,7 +56,7 @@ function registerMessageRoll(client) {
         return;
       }
 
-      // ── Combat tag ────────────────────────────────────────────
+      // ── Combat tag ──────────────────────────────────────────────
       if (parsed.combatTag) {
         const rpgSt      = require('../utils/rpgSessionStore');
         const resolved   = await rpgSt.resolveSession(message.guildId, message.channelId);
@@ -66,7 +68,7 @@ function registerMessageRoll(client) {
         return;
       }
 
-      // ── Rolagem normal ────────────────────────────────────────
+      // ── Rolagem normal ──────────────────────────────────────────
       const rollFn = () => {
         const expr = parseExpression(parsed.exprData?.notation ?? parsed.results[0].notation);
         if (!expr) return null;
@@ -83,7 +85,9 @@ function registerMessageRoll(client) {
       await message.reply({ content: format(parsed, rollFn) });
 
     } catch (err) {
-      console.error('[Chaos RPG] Erro ao responder mensagem:', err);
+      // Loga silenciosamente — erros de DB ou de rede não devem
+      // gerar resposta visível para o usuário nem derrubar o bot.
+      console.error('[Chaos RPG] Erro no listener de dados:', err.message);
     }
   });
 }

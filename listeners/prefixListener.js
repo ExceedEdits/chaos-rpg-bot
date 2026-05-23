@@ -91,19 +91,21 @@ function buildHelp(commands, prefix) {
 
 function registerPrefixListener(client) {
   client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-    if (!message.guildId)   return;
-
-    const raw    = message.content.trim();
-    const prefix = await getPrefix(message.guildId);
-
-    if (!raw.startsWith(prefix)) return;
-
-    // Não processar se for só o prefixo sozinho
-    const after = raw.slice(prefix.length).trim();
-    if (!after) return;
-
+    // Todo o handler dentro de try/catch — getPrefix chama MongoDB
+    // e pode falhar; sem isso o erro vira uncaughtException e derruba o bot.
     try {
+      if (message.author.bot) return;
+      if (!message.guildId)   return;
+
+      const raw    = message.content.trim();
+      const prefix = await getPrefix(message.guildId);
+
+      if (!raw.startsWith(prefix)) return;
+
+      // Não processar se for só o prefixo sozinho
+      const after = raw.slice(prefix.length).trim();
+      if (!after) return;
+
       // ── setprefix ──────────────────────────────────────────
       if (after.toLowerCase().startsWith('setprefix')) {
         if (!await isMaster(message.member)) {
@@ -212,7 +214,7 @@ function registerPrefixListener(client) {
       }
 
     } catch (err) {
-      console.error('[Chaos RPG] Erro no prefix listener:', err);
+      console.error('[Chaos RPG] Erro no prefix listener:', err.message);
     }
   });
 }
