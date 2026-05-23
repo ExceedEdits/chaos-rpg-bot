@@ -122,6 +122,21 @@ client.on('guildDelete', async (guild) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+  // ── Select menu do /help ──────────────────────────────────
+  if (interaction.isStringSelectMenu() && interaction.customId === 'help:select') {
+    const { buildSelectMenu, buildCommandDetail } = require('./commands/config/help');
+    const { ActionRowBuilder } = require('discord.js');
+    const name   = interaction.values[0];
+    const detail = buildCommandDetail(client.commands, name);
+    const row    = new ActionRowBuilder().addComponents(buildSelectMenu(client.commands));
+    try {
+      await interaction.update({ content: detail, components: [row] });
+    } catch (err) {
+      console.error('[Chaos RPG] Erro no help select:', err.message);
+    }
+    return;
+  }
+
   // ── Botão "Carregar mais músicas" ─────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith('loadmore:')) {
     const parts = interaction.customId.split(':');

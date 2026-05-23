@@ -1,103 +1,109 @@
 // ============================================================
 //  Chaos RPG Bot — /help
-//  Lista todos os comandos disponíveis, gerado dinamicamente
-//  a partir dos slash commands registrados no cliente.
+//  Exibe link do site + select menu interativo por comando.
 // ============================================================
 
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { getPrefix }                         = require('../../utils/prefixStore');
+const {
+  SlashCommandBuilder,
+  MessageFlags,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  ActionRowBuilder,
+} = require('discord.js');
 
+const SITE_URL = 'https://exceededits.github.io/chaos-rpg-site/';
+
+// Ordem e categorias exibidas no select menu (help excluído — é o próprio comando)
 const CATEGORIES = {
-  '🎲 Dados':    ['rolar', 'tag'],
-  '⚔️ Combate':  ['turno', 'iniciativa', 'status', 'dano', 'curar', 'escudo', 'vida', 'personagem', 'npc'],
-  '🗺️ Mapa':     ['mapa'],
-  '🎵 Música':   ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'shuffle', 'clear'],
-  '⚙️ Config':   ['config', 'rpg', 'help'],
+  '🎲 Dados':   ['rolar', 'tag'],
+  '⚔️ Combate': ['turno', 'iniciativa', 'status', 'dano', 'curar', 'escudo', 'vida', 'personagem', 'npc'],
+  '🗺️ Mapa':    ['mapa'],
+  '🎵 Música':  ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'shuffle', 'clear'],
+  '⚙️ Config':  ['config', 'rpg'],
 };
 
-/**
- * Gera o texto de ajuda de forma compacta — apenas nomes dos subcomandos,
- * sem descrições individuais, para caber no limite de 2000 chars do Discord.
- */
-function buildHelp(commands, prefix) {
-  const lines = [
-    '**Chaos RPG Bot** — Comandos disponíveis',
-    `Prefixo: \`${prefix}\` · Slash: \`/\` · 📖 https://exceededits.github.io/chaos-rpg-site/`,
-    '',
-  ];
+// ── Helpers exportados (usados também em index.js) ────────────
 
-  const listed = new Set();
+/**
+ * Constrói o StringSelectMenuBuilder com todos os comandos disponíveis.
+ * @param {import('discord.js').Collection} commands
+ */
+function buildSelectMenu(commands) {
+  const options = [];
 
   for (const [cat, names] of Object.entries(CATEGORIES)) {
-    const catLines = [];
-
     for (const name of names) {
       const cmd = commands.get(name);
       if (!cmd) continue;
-      listed.add(name);
 
-      const json    = cmd.data.toJSON();
-      const subcmds = (json.options ?? []).filter(o => o.type === 1); // SUB_COMMAND
-      const groups  = (json.options ?? []).filter(o => o.type === 2); // SUB_COMMAND_GROUP
+      const json = cmd.data.toJSON();
+      // Descrição no option = "Categoria — descrição do comando" (max 100 chars)
+      const desc = `${cat} — ${json.description}`.slice(0, 100);
 
-      if (subcmds.length === 0 && groups.length === 0) {
-        // Comando simples — exibe com descrição curta
-        catLines.push(`  \`/${name}\` — ${json.description}`);
-      } else {
-        // Comando com subcomandos — lista só os nomes numa linha
-        const subNames = [
-          ...subcmds.map(s => s.name),
-          ...groups.flatMap(g => (g.options ?? []).map(s => s.name)),
-        ].join(', ');
-        catLines.push(`  \`/${name}\` — ${subNames}`);
-      }
-    }
-
-    if (catLines.length > 0) {
-      lines.push(`**${cat}**`);
-      lines.push(...catLines);
-      lines.push('');
+      options.push(
+        new StringSelectMenuOptionBuilder()
+          .setValue(name)
+          .setLabel(`/${name}`)
+          .setDescription(desc),
+      );
     }
   }
 
-  // Comandos não categorizados
-  const rest = [...commands.keys()].filter(k => !listed.has(k));
-  if (rest.length > 0) {
-    lines.push('**📦 Outros**');
-    for (const name of rest) {
-      const desc = commands.get(name)?.data.toJSON().description ?? '';
-      lines.push(`  \`/${name}\` — ${desc}`);
-    }
-    lines.push('');
-  }
-
-  lines.push('**🔧 Exclusivos de texto**');
-  lines.push(`  \`${prefix}setprefix <p>\` — Muda o prefixo (Mestre)`);
-  lines.push(`  \`${prefix}help\` — Esta ajuda`);
-
-  return lines.join('\n');
+  return new StringSelectMenuBuilder()
+    .setCustomId('help:select')
+    .setPlaceholder('Selecione um comando para ver detalhes...')
+    .addOptions(options);
 }
 
 /**
- * Divide um texto longo em chunks de até maxLength caracteres,
- * quebrando sempre em fim de linha para não cortar palavras.
+ * Gera o texto detalhado de um comando específico.
+ * @param {import('discord.js').Collection} commands
+ * @param {string} name  Nome do comando
  */
-function splitChunks(text, maxLength = 1900) {
-  const chunks = [];
-  const lines  = text.split('\n');
-  let current  = '';
+function buildCommandDetail(commands, name) {
+  const cmd = commands.get(name);
+  if (!cmd) return `❌ Comando \`/${name}\` não encontrado.`;
 
-  for (const line of lines) {
-    const next = current ? `${current}\n${line}` : line;
-    if (next.length > maxLength) {
-      if (current) chunks.push(current);
-      current = line;
-    } else {
-      current = next;
+  const json     = cmd.data.toJSON();
+  const subcmds  = (json.options ?? []).filter(o => o.type === 1); // SUB_COMMAND
+  const groups   = (json.options ?? []).filter(o => o.type === 2); // SUB_COMMAND_GROUP
+  const params   = (json.options ?? []).filter(o => o.type !== 1 && o.type !== 2);
+
+  const lines = [`### \`/${json.name}\``, json.description];
+
+  // Comando simples com parâmetros diretos
+  if (params.length > 0) {
+    lines.push('', '**Parâmetros:**');
+    for (const p of params) {
+      const req = p.required ? ' \\*' : '';
+      lines.push(`  \`${p.name}${req}\` — ${p.description}`);
     }
   }
-  if (current) chunks.push(current);
-  return chunks;
+
+  // Subcomandos diretos
+  if (subcmds.length > 0) {
+    lines.push('', '**Subcomandos:**');
+    for (const sub of subcmds) {
+      lines.push(`  • \`/${json.name} ${sub.name}\` — ${sub.description}`);
+    }
+  }
+
+  // Grupos de subcomandos
+  for (const grp of groups) {
+    lines.push('', `**\`/${json.name} ${grp.name}:\`**`);
+    for (const sub of (grp.options ?? []).filter(o => o.type === 1)) {
+      lines.push(`  • \`/${json.name} ${grp.name} ${sub.name}\` — ${sub.description}`);
+    }
+  }
+
+  lines.push('', `📖 Documentação completa: <${SITE_URL}>`);
+  return lines.join('\n');
+}
+
+// ── Mensagem base (conteúdo inicial do /help) ─────────────────
+
+function baseContent() {
+  return `📖 **Chaos RPG Bot** — Documentação: <${SITE_URL}>\n\nSelecione um comando abaixo para ver seus detalhes:`;
 }
 
 // ── Comando ───────────────────────────────────────────────────
@@ -107,23 +113,14 @@ const data = new SlashCommandBuilder()
   .setDescription('Lista todos os comandos disponíveis do bot');
 
 async function execute(interaction, client) {
-  const prefix = await getPrefix(interaction.guildId);
-  const help   = buildHelp(client.commands, prefix);
-  const chunks = splitChunks(help);
+  const select = buildSelectMenu(client.commands);
+  const row    = new ActionRowBuilder().addComponents(select);
 
-  // Primeira mensagem como reply ephemeral
   await interaction.reply({
-    content: chunks[0],
-    flags:   MessageFlags.Ephemeral,
+    content:    baseContent(),
+    components: [row],
+    flags:      MessageFlags.Ephemeral,
   });
-
-  // Chunks adicionais como followUp (caso o help seja muito longo)
-  for (let i = 1; i < chunks.length; i++) {
-    await interaction.followUp({
-      content: chunks[i],
-      flags:   MessageFlags.Ephemeral,
-    });
-  }
 }
 
-module.exports = { data, execute };
+module.exports = { data, execute, buildSelectMenu, buildCommandDetail, baseContent };
