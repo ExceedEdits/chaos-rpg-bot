@@ -66,8 +66,14 @@ async function _ensureYtDlp() {
 }
 
 // ── Spotify Web API ───────────────────────────────────────────
-let _spToken   = null;
-let _spExpires = 0;
+
+// Cache separado para Client Credentials e Authorization Code (user token)
+// Client Credentials: acessa qualquer conteúdo PÚBLICO de qualquer usuário.
+// Authorization Code: acessa playlists PRIVADAS da conta autenticada.
+let _spCCToken   = null;  // Client Credentials
+let _spCCExpires = 0;
+let _spACToken   = null;  // Authorization Code (refresh token do .env)
+let _spACExpires = 0;
 
 const _SP_PATTERNS = {
   track:    /open\.spotify\.com\/(?:intl-[a-z-]+\/)?track\/([a-zA-Z0-9]+)/,
@@ -98,7 +104,9 @@ function _jsonRequest(options, body = null) {
           const parsed = JSON.parse(raw);
           if (res.statusCode >= 400) {
             const msg = parsed?.error_description ?? parsed?.error?.message ?? parsed?.error ?? raw;
-            reject(new Error(`HTTP ${res.statusCode}: ${msg}`));
+            const err  = new Error(`HTTP ${res.statusCode}: ${msg}`);
+            err.status = res.statusCode;
+            reject(err);
           } else {
             resolve(parsed);
           }
@@ -114,17 +122,11 @@ function _jsonRequest(options, body = null) {
 }
 
 /**
- * Obtém (ou renova) o access token do Spotify.
- *
- * Se SPOTIFY_REFRESH_TOKEN estiver no .env, usa Authorization Code flow →
- * acessa playlists privadas do usuário (scope: playlist-read-private).
- *
- * Caso contrário, usa Client Credentials → apenas conteúdo público.
- *
- * Para obter o refresh_token, execute:  node scripts/spotify-auth.js
+ * Obtém (ou renova) o access token via Client Credentials.
+ * Funciona para qualquer conteúdo público de qualquer usuário do Spotify.
  */
-async function _getSpotifyToken() {
-  if (_spToken && Date.now() < _spExpires) return _spToken;
+async function _getClientCredentialsToken() {
+  if (_spCCToken && Date.now() < _spCCExpires) return _spCCToken;
 
   const clientId     = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
@@ -132,17 +134,9 @@ async function _getSpotifyToken() {
     throw new Error('Credenciais do Spotify não configuradas no .env (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).');
   }
 
-  const auth         = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const body = Buffer.from('grant_type=client_credentials');
 
-
-  // Authorization Code (refresh) → acesso de usuário (playlists privadas)
-  // Client Credentials           → acesso de app (só conteúdo público)
-  const bodyStr = refreshToken
-    ? `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
-    : 'grant_type=client_credentials';
-
-  const body = Buffer.from(bodyStr);
   const data = await _jsonRequest({
     hostname: 'accounts.spotify.com',
     path:     '/api/token',
@@ -154,27 +148,114 @@ async function _getSpotifyToken() {
     },
   }, body);
 
-  _spToken   = data.access_token;
-  _spExpires = Date.now() + (data.expires_in - 60) * 1000;
-
-  // Atualiza o refresh token se o Spotify emitiu um novo (rotação de token)
-  if (data.refresh_token && data.refresh_token !== refreshToken) {
-    process.env.SPOTIFY_REFRESH_TOKEN = data.refresh_token;
-    console.log('[Music] Spotify refresh token renovado. Atualize SPOTIFY_REFRESH_TOKEN no .env.');
-  }
-
-  return _spToken;
+  _spCCToken   = data.access_token;
+  _spCCExpires = Date.now() + (data.expires_in - 60) * 1000;
+  return _spCCToken;
 }
 
-/** Faz um GET autenticado na Spotify Web API e retorna JSON. */
+/**
+ * Obtém (ou renova) o access token via Authorization Code (refresh token).
+ * Necessário apenas para playlists PRIVADAS da conta configurada no .env.
+ * Retorna null se SPOTIFY_REFRESH_TOKEN não estiver configurado.
+ *
+ * Para obter o refresh_token, execute:  node scripts/spotify-auth.js
+ */
+async function _getUserToken() {
+  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
+  if (!refreshToken) return null;
+  if (_spACToken && Date.now() < _spACExpires) return _spACToken;
+
+  const clientId     = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  const auth    = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const bodyStr = `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`;
+  const body    = Buffer.from(bodyStr);
+
+  try {
+    const data = await _jsonRequest({
+      hostname: 'accounts.spotify.com',
+      path:     '/api/token',
+      method:   'POST',
+      headers: {
+        'Authorization':  `Basic ${auth}`,
+        'Content-Type':   'application/x-www-form-urlencoded',
+        'Content-Length': body.length,
+      },
+    }, body);
+
+    _spACToken   = data.access_token;
+    _spACExpires = Date.now() + (data.expires_in - 60) * 1000;
+
+    // Atualiza o refresh token se o Spotify emitiu um novo (rotação de token)
+    if (data.refresh_token && data.refresh_token !== refreshToken) {
+      process.env.SPOTIFY_REFRESH_TOKEN = data.refresh_token;
+      console.log('[Music] Spotify refresh token renovado. Atualize SPOTIFY_REFRESH_TOKEN no .env.');
+    }
+
+    return _spACToken;
+  } catch (err) {
+    console.warn('[Music] Falha ao renovar user token do Spotify:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Faz um GET autenticado na Spotify Web API.
+ *
+ * Estratégia de token:
+ *  1. Tenta Client Credentials — funciona para qualquer conteúdo público
+ *     de qualquer usuário do Spotify (playlists, álbuns, faixas).
+ *  2. Se receber 401/403 E houver refresh token configurado, tenta o
+ *     user token (Authorization Code) — para playlists privadas da conta
+ *     do .env.
+ *  3. Se ambos falharem, lança o erro original com mensagem amigável.
+ */
 async function _spotifyGet(path) {
-  const token = await _getSpotifyToken();
-  return _jsonRequest({
-    hostname: 'api.spotify.com',
-    path,
-    method:   'GET',
-    headers:  { 'Authorization': `Bearer ${token}` },
-  });
+  // ── Tentativa 1: Client Credentials (qualquer conteúdo público) ──
+  try {
+    const ccToken = await _getClientCredentialsToken();
+    return await _jsonRequest({
+      hostname: 'api.spotify.com',
+      path,
+      method:   'GET',
+      headers:  { 'Authorization': `Bearer ${ccToken}` },
+    });
+  } catch (ccErr) {
+    // Se não for 401/403, propaga imediatamente (ex: 404 não existe)
+    if (!ccErr.status || (ccErr.status !== 401 && ccErr.status !== 403)) {
+      if (ccErr.message?.includes('404')) throw new Error('Conteúdo não encontrado no Spotify.');
+      throw ccErr;
+    }
+
+    // ── Tentativa 2: User token (playlists privadas da conta configurada) ──
+    const userToken = await _getUserToken();
+    if (!userToken) {
+      throw new Error(
+        '❌ Acesso negado pelo Spotify.\n' +
+        '• A playlist pode ser **privada** — só o dono consegue acessar.\n' +
+        '• Playlists editoriais do Spotify (ex: Top 50, Radar de Novidades) bloqueiam acesso externo.\n' +
+        '• Se for sua playlist privada, configure `SPOTIFY_REFRESH_TOKEN` no .env e rode `node scripts/spotify-auth.js`.'
+      );
+    }
+
+    try {
+      return await _jsonRequest({
+        hostname: 'api.spotify.com',
+        path,
+        method:   'GET',
+        headers:  { 'Authorization': `Bearer ${userToken}` },
+      });
+    } catch (userErr) {
+      throw new Error(
+        '❌ Acesso negado pelo Spotify.\n' +
+        '• A playlist pode ser **privada** de outro usuário (impossível de acessar).\n' +
+        '• Playlists editoriais do Spotify bloqueiam acesso externo.\n' +
+        '• Certifique-se de que o link é de uma playlist **pública**.'
+      );
+    }
+  }
 }
 
 /**
@@ -469,15 +550,7 @@ async function resolveQuery(query, requestedBy) {
       playlist = await _spotifyGet(`/v1/playlists/${id}`);
     } catch (err) {
       console.error('[Music] Spotify playlist erro:', err.message);
-      if (err.message.includes('403')) {
-        throw new Error(
-          '❌ Spotify: acesso negado à playlist.\n' +
-          '• Playlists editoriais do Spotify (Top 50, Radar de Novidades, etc.) não são acessíveis\n' +
-          '• Refresh token expirado — rode `node scripts/spotify-auth.js` novamente'
-        );
-      }
-      if (err.message.includes('404')) throw new Error('Playlist não encontrada no Spotify.');
-      throw err;
+      throw err; // mensagem amigável já gerada por _spotifyGet
     }
 
     playlistName = playlist.name ?? 'Playlist do Spotify';
