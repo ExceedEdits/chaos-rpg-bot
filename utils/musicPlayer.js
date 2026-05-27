@@ -101,9 +101,6 @@ function _ensureYtCookies() {
   }
 }
 
-// 'cookies' = cookies funcionando | 'nocookies' = fallback para ios
-let _ytStrategy = null;
-
 /**
  * Retorna os args do yt-dlp que contornam bot detection.
  *
@@ -115,41 +112,63 @@ let _ytStrategy = null;
 function _ytBotArgs() {
   _ensureYtCookies();
 
-  if (_cookiesWritten && _ytStrategy !== 'nocookies') {
+  if (_cookiesWritten) {
+    // android → suporta bestaudio (áudio puro) E funciona com cookies.
+    // tv_embedded → bypass de restrições editoriais, bom fallback com cookies.
+    // web → último recurso.
+    // ios NÃO é usado com cookies (usa tokens OAuth próprios, incompatível).
     return [
-      '--extractor-args', 'youtube:player_client=web,mweb',
+      '--extractor-args', 'youtube:player_client=android,tv_embedded,web',
       '--extractor-args', 'youtubetab:skip=authcheck',
       '--cookies', _COOKIES_PATH,
     ];
   }
 
+  // Sem cookies: tenta ios → android → mweb.
+  // ATENÇÃO: IPs de data center (Railway) são bloqueados pelo YouTube sem cookies.
   return ['--extractor-args', 'youtube:player_client=ios,android,mweb'];
 }
 
 /**
- * Executa o yt-dlp com retry automático:
- *  1ª tentativa: estratégia atual (_ytBotArgs)
- *  Se receber erro de "Sign in / bot" E cookies estiverem ativos →
- *    muda para ios sem cookies e tenta de novo (e lembra disso na sessão).
+ * Executa o yt-dlp com retry automático em caso de falha.
+ *
+ * Com cookies:
+ *   1ª tentativa: android,tv_embedded,web + cookies
+ *   Se falhar com bot/format error → tenta cada client individualmente
+ *   com os mesmos cookies antes de desistir.
+ *
+ * Sem cookies:
+ *   1ª tentativa: ios,android,mweb
+ *   Sem retry (IP bloqueado sem auth — não há o que tentar).
  */
 async function _ytExec(wrap, args) {
-  const primary = _ytBotArgs();
   try {
-    const result = await wrap.execPromise([...args, ...primary]);
-    if (_cookiesWritten && _ytStrategy === null) _ytStrategy = 'cookies';
-    return result;
+    return await wrap.execPromise([...args, ..._ytBotArgs()]);
   } catch (err) {
-    const isBotErr = /Sign in|not a bot|confirm you|Failed to extract any player|Requested format is not available/i.test(err.message);
-    if (isBotErr && _cookiesWritten && _ytStrategy !== 'nocookies') {
-      console.warn('[Music] Estratégia com cookies falhou ("' + err.message.split('\n')[0].slice(0, 80) + '"). Alternando para player_client=ios,android,mweb sem cookies...');
-      _ytStrategy = 'nocookies';
-      // Retry sem cookies — tenta ios → android → mweb em sequência
-      return wrap.execPromise([
-        ...args,
-        '--extractor-args', 'youtube:player_client=ios,android,mweb',
-      ]);
+    const isRecoverable = /Sign in|not a bot|confirm you|Failed to extract any player|Requested format is not available/i.test(err.message);
+
+    // Sem cookies ou erro não-recuperável → propaga
+    if (!_cookiesWritten || !isRecoverable) throw err;
+
+    // Com cookies: tenta clients individualmente na ordem de confiabilidade
+    const fallbackClients = ['android', 'tv_embedded', 'web', 'mweb'];
+    let lastErr = err;
+
+    for (const client of fallbackClients) {
+      try {
+        console.warn(`[Music] Falha com client primário. Tentando player_client=${client} + cookies...`);
+        return await wrap.execPromise([
+          ...args,
+          '--extractor-args', `youtube:player_client=${client}`,
+          '--extractor-args', 'youtubetab:skip=authcheck',
+          '--cookies', _COOKIES_PATH,
+        ]);
+      } catch (e) {
+        lastErr = e;
+      }
     }
-    throw err;
+
+    throw lastErr;
   }
 }
 
