@@ -101,29 +101,56 @@ function _ensureYtCookies() {
   }
 }
 
+// 'cookies' = cookies funcionando | 'nocookies' = fallback para ios
+let _ytStrategy = null;
+
 /**
  * Retorna os args do yt-dlp que contornam bot detection.
- * Deve ser espalhado em todas as chamadas ao yt-dlp que acessam o YouTube.
  *
- * Sem cookies → usa player_client=ios (bypass de bot detection para IPs
- *   de data center sem necessidade de autenticação).
- *
- * Com cookies → usa player_client=web (compatível com cookies exportados
- *   do browser; ios usa tokens de auth diferentes e falha com cookies web)
- *   + youtubetab:skip=authcheck (evita erro em playlists com cookies).
+ * Com cookies válidos → player_client=web (compatível com cookies do browser)
+ *                        + youtubetab:skip=authcheck (playlists com cookies)
+ * Sem cookies / fallback → player_client=ios,android,mweb (bypass de IPs
+ *   de data center sem autenticação — tenta os 3 em sequência)
  */
 function _ytBotArgs() {
   _ensureYtCookies();
 
-  if (_cookiesWritten) {
+  if (_cookiesWritten && _ytStrategy !== 'nocookies') {
     return [
-      '--extractor-args', 'youtube:player_client=web',
+      '--extractor-args', 'youtube:player_client=web,mweb',
       '--extractor-args', 'youtubetab:skip=authcheck',
       '--cookies', _COOKIES_PATH,
     ];
   }
 
-  return ['--extractor-args', 'youtube:player_client=ios'];
+  return ['--extractor-args', 'youtube:player_client=ios,android,mweb'];
+}
+
+/**
+ * Executa o yt-dlp com retry automático:
+ *  1ª tentativa: estratégia atual (_ytBotArgs)
+ *  Se receber erro de "Sign in / bot" E cookies estiverem ativos →
+ *    muda para ios sem cookies e tenta de novo (e lembra disso na sessão).
+ */
+async function _ytExec(wrap, args) {
+  const primary = _ytBotArgs();
+  try {
+    const result = await wrap.execPromise([...args, ...primary]);
+    if (_cookiesWritten && _ytStrategy === null) _ytStrategy = 'cookies';
+    return result;
+  } catch (err) {
+    const isBotErr = /Sign in|not a bot|confirm you|Failed to extract any player/i.test(err.message);
+    if (isBotErr && _cookiesWritten && _ytStrategy !== 'nocookies') {
+      console.warn('[Music] Cookies do YouTube rejeitados pelo servidor. Alternando para player_client=ios sem cookies...');
+      _ytStrategy = 'nocookies';
+      // Retry sem cookies
+      return wrap.execPromise([
+        ...args,
+        '--extractor-args', 'youtube:player_client=ios,android,mweb',
+      ]);
+    }
+    throw err;
+  }
 }
 
 // ── Spotify Web API ───────────────────────────────────────────
@@ -373,7 +400,7 @@ async function _fetchYouTubePlaylist(url, requestedBy, max = 500, offset = 0) {
   await _ensureYtDlp();
   const wrap = _getWrap();
 
-  const raw = await wrap.execPromise([
+  const raw = await _ytExec(wrap, [
     url,
     '--flat-playlist',
     '--dump-json',
@@ -381,7 +408,6 @@ async function _fetchYouTubePlaylist(url, requestedBy, max = 500, offset = 0) {
     '--quiet',
     `--playlist-start=${offset + 1}`,
     `--playlist-end=${offset + max}`,
-    ..._ytBotArgs(),
   ]);
 
   const lines  = raw.trim().split('\n').filter(Boolean);
@@ -431,14 +457,13 @@ function formatDuration(sec) {
 async function _ytSearch(query) {
   await _ensureYtDlp();
   const wrap = _getWrap();
-  const raw  = await wrap.execPromise([
+  const raw  = await _ytExec(wrap, [
     `ytsearch1:${query}`,
     '--dump-json',
     '--no-playlist',
     '--flat-playlist',
     '--no-warnings',
     '--quiet',
-    ..._ytBotArgs(),
   ]);
 
   const item = JSON.parse(raw.trim().split('\n')[0]);
@@ -555,9 +580,9 @@ async function resolveQuery(query, requestedBy) {
   // ── YouTube: link de vídeo ────────────────────────────────
   if (extractVideoId(query)) {
     await _ensureYtDlp();
-    const raw  = await _getWrap().execPromise([
+    const wrap = _getWrap();
+    const raw  = await _ytExec(wrap, [
       query, '--dump-json', '--no-playlist', '--quiet', '--no-warnings',
-      ..._ytBotArgs(),
     ]);
     const data = JSON.parse(raw.trim());
     return {
