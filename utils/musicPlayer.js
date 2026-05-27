@@ -44,24 +44,47 @@ let _ytDlpReady = false;
 
 async function _ensureYtDlp() {
   if (_ytDlpReady) return;
-  const wrap = new YTDlpWrap(_BIN_PATH);
-  try {
-    await wrap.getVersion();
-    _ytDlpReady = true;
-  } catch {
-    console.log('[Music] yt-dlp não encontrado. Baixando do GitHub...');
+
+  // Sempre baixa a versão mais recente do GitHub.
+  // O parâmetro "n" do YouTube muda frequentemente — yt-dlp desatualizado
+  // falha com "Requested format is not available" em todos os clients.
+  // No Railway /tmp é limpo a cada deploy, então o download sempre ocorre.
+  // Em dev local: só baixa se o binário não existir ou estiver com mais de 24h.
+  const needsDownload = (() => {
+    try {
+      const stat = fs.statSync(_BIN_PATH);
+      if (process.platform !== 'win32') {
+        // No Linux, /tmp é limpo no redeploy — sempre baixa
+        return true;
+      }
+      // No Windows (dev local), atualiza a cada 24 horas
+      return Date.now() - stat.mtimeMs > 24 * 60 * 60 * 1000;
+    } catch {
+      return true; // não existe
+    }
+  })();
+
+  if (needsDownload) {
+    console.log('[Music] Baixando yt-dlp mais recente do GitHub...');
     try {
       await YTDlpWrap.downloadFromGithub(_BIN_PATH);
-      // Garante permissão de execução no Linux (necessário após download)
       if (process.platform !== 'win32') {
         try { fs.chmodSync(_BIN_PATH, 0o755); } catch {}
       }
-      _ytDlpReady = true;
-      console.log('[Music] yt-dlp pronto em', _BIN_PATH);
-    } catch (err) {
-      console.error('[Music] Falha ao baixar yt-dlp:', err.message);
-      throw err;
+      console.log('[Music] yt-dlp atualizado com sucesso.');
+    } catch (downloadErr) {
+      console.warn('[Music] Falha ao baixar yt-dlp:', downloadErr.message, '— tentando binário existente...');
     }
+  }
+
+  const wrap = new YTDlpWrap(_BIN_PATH);
+  try {
+    const version = await wrap.getVersion();
+    _ytDlpReady = true;
+    console.log('[Music] yt-dlp pronto. Versão:', version);
+  } catch (err) {
+    console.error('[Music] yt-dlp não funciona:', err.message);
+    throw err;
   }
 }
 
@@ -113,14 +136,16 @@ function _ytBotArgs() {
   _ensureYtCookies();
 
   if (_cookiesWritten) {
-    // android → suporta bestaudio (áudio puro) E funciona com cookies.
-    // tv_embedded → bypass de restrições editoriais, bom fallback com cookies.
-    // web → último recurso.
-    // ios NÃO é usado com cookies (usa tokens OAuth próprios, incompatível).
-    // --no-check-formats → evita que o yt-dlp valide cada URL de formato
-    //   individualmente (causa "Requested format is not available" em alguns clients).
+    // player_client: android → tv_embedded → web (todos compatíveis com cookies).
+    // skip=dash → pula formatos DASH que usam o parâmetro "n" do YouTube.
+    //   O parâmetro "n" requer descriptografia via JS do player; se o yt-dlp
+    //   não conseguir executar o JS correto, TODOS os formatos DASH ficam
+    //   inválidos e o erro é "Requested format is not available".
+    //   Sem DASH, o yt-dlp usa formatos progressivos (mux de vídeo+áudio)
+    //   que não precisam do parâmetro "n" — mais simples e sempre funcionam.
+    // --no-check-formats → não valida URLs de formato individualmente.
     return [
-      '--extractor-args', 'youtube:player_client=android,tv_embedded,web',
+      '--extractor-args', 'youtube:player_client=android,tv_embedded,web;skip=dash',
       '--extractor-args', 'youtubetab:skip=authcheck',
       '--cookies', _COOKIES_PATH,
       '--no-check-formats',
@@ -129,7 +154,10 @@ function _ytBotArgs() {
 
   // Sem cookies: tenta ios → android → mweb.
   // ATENÇÃO: IPs de data center (Railway) são bloqueados pelo YouTube sem cookies.
-  return ['--extractor-args', 'youtube:player_client=ios,android,mweb'];
+  return [
+    '--extractor-args', 'youtube:player_client=ios,android,mweb;skip=dash',
+    '--no-check-formats',
+  ];
 }
 
 /**
@@ -162,7 +190,7 @@ async function _ytExec(wrap, args) {
         console.warn(`[Music] Falha com client primário. Tentando player_client=${client} + cookies...`);
         return await wrap.execPromise([
           ...args,
-          '--extractor-args', `youtube:player_client=${client}`,
+          '--extractor-args', `youtube:player_client=${client};skip=dash`,
           '--extractor-args', 'youtubetab:skip=authcheck',
           '--cookies', _COOKIES_PATH,
           '--no-check-formats',
