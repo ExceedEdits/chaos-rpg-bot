@@ -139,11 +139,11 @@ async function _ytExec(wrap, args) {
     if (_cookiesWritten && _ytStrategy === null) _ytStrategy = 'cookies';
     return result;
   } catch (err) {
-    const isBotErr = /Sign in|not a bot|confirm you|Failed to extract any player/i.test(err.message);
+    const isBotErr = /Sign in|not a bot|confirm you|Failed to extract any player|Requested format is not available/i.test(err.message);
     if (isBotErr && _cookiesWritten && _ytStrategy !== 'nocookies') {
-      console.warn('[Music] Cookies do YouTube rejeitados pelo servidor. Alternando para player_client=ios sem cookies...');
+      console.warn('[Music] Estratégia com cookies falhou ("' + err.message.split('\n')[0].slice(0, 80) + '"). Alternando para player_client=ios,android,mweb sem cookies...');
       _ytStrategy = 'nocookies';
-      // Retry sem cookies
+      // Retry sem cookies — tenta ios → android → mweb em sequência
       return wrap.execPromise([
         ...args,
         '--extractor-args', 'youtube:player_client=ios,android,mweb',
@@ -501,7 +501,7 @@ async function _getYouTubeAudioStream(url) {
 
   const ytdlp = spawn(_BIN_PATH, [
     url,
-    '-f', 'bestaudio',
+    '-f', 'bestaudio/best',
     '--no-playlist',
     '-o', '-',
     '--quiet',
