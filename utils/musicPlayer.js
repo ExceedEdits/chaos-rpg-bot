@@ -1024,8 +1024,24 @@ async function loadMoreTracks(continuation, requestedBy) {
   throw new Error('Tipo de continuação desconhecido: ' + type);
 }
 
-// Inicializa yt-dlp em background ao carregar o módulo
+// Inicializa yt-dlp e cookies em background ao carregar o módulo
 _ensureYtDlp().catch(err => console.warn('[Music] Falha ao inicializar yt-dlp:', err.message));
+
+// Log de status do YouTube na inicialização
+(() => {
+  const b64 = process.env.YOUTUBE_COOKIES_B64;
+  if (!b64) {
+    console.warn('[Music] YOUTUBE_COOKIES_B64 não definida — YouTube pode bloquear em IPs de data center.');
+    console.warn('[Music] Estratégia: player_client=ios,android,mweb (sem autenticação).');
+  } else {
+    _ensureYtCookies();
+    if (_cookiesWritten) {
+      console.log('[Music] Cookies do YouTube carregados. Estratégia: android,tv_embedded,web + cookies.');
+    } else {
+      console.warn('[Music] YOUTUBE_COOKIES_B64 definida mas falhou ao gravar cookies. Verifique o valor da variável.');
+    }
+  }
+})();
 
 module.exports = {
   getState,
