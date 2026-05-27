@@ -136,16 +136,15 @@ function _ytBotArgs() {
   _ensureYtCookies();
 
   if (_cookiesWritten) {
-    // player_client: android → tv_embedded → web (todos compatíveis com cookies).
-    // skip=dash → pula formatos DASH que usam o parâmetro "n" do YouTube.
-    //   O parâmetro "n" requer descriptografia via JS do player; se o yt-dlp
-    //   não conseguir executar o JS correto, TODOS os formatos DASH ficam
-    //   inválidos e o erro é "Requested format is not available".
-    //   Sem DASH, o yt-dlp usa formatos progressivos (mux de vídeo+áudio)
-    //   que não precisam do parâmetro "n" — mais simples e sempre funcionam.
-    // --no-check-formats → não valida URLs de formato individualmente.
+    // player_client: android → tv_embedded → web (compatíveis com cookies).
+    // player_skip=js → não baixa o JavaScript do player do YouTube para
+    //   descriptografar o parâmetro "n". Usa a implementação interna do
+    //   yt-dlp, que é atualizada a cada release. Evita o erro
+    //   "Requested format is not available" causado por falha na descriptografia.
+    // IMPORTANTE: skip=dash NÃO deve ser usado — ele desativa o caminho
+    //   de autenticação que aplica os cookies, causando "Sign in" errors.
     return [
-      '--extractor-args', 'youtube:player_client=android,tv_embedded,web;skip=dash',
+      '--extractor-args', 'youtube:player_client=android,tv_embedded,web;player_skip=js',
       '--extractor-args', 'youtubetab:skip=authcheck',
       '--cookies', _COOKIES_PATH,
       '--no-check-formats',
@@ -155,7 +154,7 @@ function _ytBotArgs() {
   // Sem cookies: tenta ios → android → mweb.
   // ATENÇÃO: IPs de data center (Railway) são bloqueados pelo YouTube sem cookies.
   return [
-    '--extractor-args', 'youtube:player_client=ios,android,mweb;skip=dash',
+    '--extractor-args', 'youtube:player_client=ios,android,mweb;player_skip=js',
     '--no-check-formats',
   ];
 }
@@ -190,7 +189,7 @@ async function _ytExec(wrap, args) {
         console.warn(`[Music] Falha com client primário. Tentando player_client=${client} + cookies...`);
         return await wrap.execPromise([
           ...args,
-          '--extractor-args', `youtube:player_client=${client};skip=dash`,
+          '--extractor-args', `youtube:player_client=${client};player_skip=js`,
           '--extractor-args', 'youtubetab:skip=authcheck',
           '--cookies', _COOKIES_PATH,
           '--no-check-formats',
