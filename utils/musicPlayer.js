@@ -104,16 +104,26 @@ function _ensureYtCookies() {
 /**
  * Retorna os args do yt-dlp que contornam bot detection.
  * Deve ser espalhado em todas as chamadas ao yt-dlp que acessam o YouTube.
+ *
+ * Sem cookies → usa player_client=ios (bypass de bot detection para IPs
+ *   de data center sem necessidade de autenticação).
+ *
+ * Com cookies → usa player_client=web (compatível com cookies exportados
+ *   do browser; ios usa tokens de auth diferentes e falha com cookies web)
+ *   + youtubetab:skip=authcheck (evita erro em playlists com cookies).
  */
 function _ytBotArgs() {
-  const args = [
-    '--extractor-args', 'youtube:player_client=ios',
-  ];
   _ensureYtCookies();
+
   if (_cookiesWritten) {
-    args.push('--cookies', _COOKIES_PATH);
+    return [
+      '--extractor-args', 'youtube:player_client=web',
+      '--extractor-args', 'youtubetab:skip=authcheck',
+      '--cookies', _COOKIES_PATH,
+    ];
   }
-  return args;
+
+  return ['--extractor-args', 'youtube:player_client=ios'];
 }
 
 // ── Spotify Web API ───────────────────────────────────────────
