@@ -65,6 +65,57 @@ async function _ensureYtDlp() {
   }
 }
 
+// ── YouTube bot detection workaround ─────────────────────────
+// O YouTube bloqueia IPs de data center (Railway, Render, VPS) com
+// "Sign in to confirm you're not a bot". Duas estratégias combinadas:
+//
+//  1. player_client=ios — simula o app do YouTube no iOS, que usa
+//     uma API diferente sem bot check. Funciona na maioria dos casos.
+//
+//  2. Cookies (opcional) — se YOUTUBE_COOKIES_B64 estiver no .env,
+//     o conteúdo do cookies.txt (formato Netscape) em base64 é gravado
+//     em /tmp e passado via --cookies. Mais robusto para contas logadas.
+//
+//     Como exportar:
+//       Chrome → extensão "Get cookies.txt LOCALLY" → Export as Netscape
+//       base64 -w 0 cookies.txt   (Linux/Mac)
+//       [Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))   (PowerShell)
+//     Cole o resultado em YOUTUBE_COOKIES_B64 nas variáveis do Railway.
+
+const _COOKIES_PATH = path.join(
+  process.platform === 'win32' ? (process.env.TEMP ?? 'C:\\Temp') : '/tmp',
+  'yt-cookies.txt',
+);
+let _cookiesWritten = false;
+
+function _ensureYtCookies() {
+  if (_cookiesWritten) return;
+  const b64 = process.env.YOUTUBE_COOKIES_B64;
+  if (!b64) return;
+  try {
+    fs.writeFileSync(_COOKIES_PATH, Buffer.from(b64, 'base64').toString('utf8'), 'utf8');
+    _cookiesWritten = true;
+    console.log('[Music] Cookies do YouTube carregados em', _COOKIES_PATH);
+  } catch (err) {
+    console.warn('[Music] Falha ao gravar cookies do YouTube:', err.message);
+  }
+}
+
+/**
+ * Retorna os args do yt-dlp que contornam bot detection.
+ * Deve ser espalhado em todas as chamadas ao yt-dlp que acessam o YouTube.
+ */
+function _ytBotArgs() {
+  const args = [
+    '--extractor-args', 'youtube:player_client=ios',
+  ];
+  _ensureYtCookies();
+  if (_cookiesWritten) {
+    args.push('--cookies', _COOKIES_PATH);
+  }
+  return args;
+}
+
 // ── Spotify Web API ───────────────────────────────────────────
 
 // Cache separado para Client Credentials e Authorization Code (user token)
@@ -320,6 +371,7 @@ async function _fetchYouTubePlaylist(url, requestedBy, max = 500, offset = 0) {
     '--quiet',
     `--playlist-start=${offset + 1}`,
     `--playlist-end=${offset + max}`,
+    ..._ytBotArgs(),
   ]);
 
   const lines  = raw.trim().split('\n').filter(Boolean);
@@ -376,6 +428,7 @@ async function _ytSearch(query) {
     '--flat-playlist',
     '--no-warnings',
     '--quiet',
+    ..._ytBotArgs(),
   ]);
 
   const item = JSON.parse(raw.trim().split('\n')[0]);
@@ -417,6 +470,7 @@ async function _getYouTubeAudioStream(url) {
     '--no-playlist',
     '-o', '-',
     '--quiet',
+    ..._ytBotArgs(),
   ]);
 
   const ffmpeg = spawn(_FFMPEG_BIN, [
@@ -493,6 +547,7 @@ async function resolveQuery(query, requestedBy) {
     await _ensureYtDlp();
     const raw  = await _getWrap().execPromise([
       query, '--dump-json', '--no-playlist', '--quiet', '--no-warnings',
+      ..._ytBotArgs(),
     ]);
     const data = JSON.parse(raw.trim());
     return {
