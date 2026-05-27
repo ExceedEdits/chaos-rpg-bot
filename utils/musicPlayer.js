@@ -117,10 +117,13 @@ function _ytBotArgs() {
     // tv_embedded → bypass de restrições editoriais, bom fallback com cookies.
     // web → último recurso.
     // ios NÃO é usado com cookies (usa tokens OAuth próprios, incompatível).
+    // --no-check-formats → evita que o yt-dlp valide cada URL de formato
+    //   individualmente (causa "Requested format is not available" em alguns clients).
     return [
       '--extractor-args', 'youtube:player_client=android,tv_embedded,web',
       '--extractor-args', 'youtubetab:skip=authcheck',
       '--cookies', _COOKIES_PATH,
+      '--no-check-formats',
     ];
   }
 
@@ -162,8 +165,11 @@ async function _ytExec(wrap, args) {
           '--extractor-args', `youtube:player_client=${client}`,
           '--extractor-args', 'youtubetab:skip=authcheck',
           '--cookies', _COOKIES_PATH,
+          '--no-check-formats',
         ]);
       } catch (e) {
+        const errLine = e.message.split('\n').find(l => l.includes('ERROR:')) ?? e.message.slice(0, 120);
+        console.warn(`[Music] player_client=${client} falhou: ${errLine}`);
         lastErr = e;
       }
     }
