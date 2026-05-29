@@ -18,7 +18,7 @@ const CATEGORIES = {
   '🎲 Dados':   ['rolar', 'tag'],
   '⚔️ Combate': ['turno', 'iniciativa', 'status', 'dano', 'curar', 'escudo', 'vida', 'personagem', 'npc'],
   '🗺️ Mapa':    ['mapa'],
-  '🎵 Música':  ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'shuffle', 'clear'],
+  '🎵 Música':  ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'shuffle', 'clear', 'loop', 'move'],
   '⚙️ Config':  ['config', 'rpg'],
 };
 

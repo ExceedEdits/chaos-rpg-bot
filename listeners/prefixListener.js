@@ -31,7 +31,7 @@ function buildHelp(commands, prefix) {
     '🎲 Dados':    ['rolar', 'tag'],
     '⚔️ Combate':  ['turno', 'iniciativa', 'status', 'dano', 'curar', 'escudo', 'vida', 'personagem', 'npc'],
     '🗺️ Mapa':     ['mapa'],
-    '🎵 Música':   ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'clear', 'shuffle'],
+    '🎵 Música':   ['play', 'pause', 'resume', 'skip', 'back', 'restart', 'stop', 'queue', 'remove', 'clear', 'shuffle', 'loop', 'move'],
     '⚙️ Config':   ['config', 'rpg'],
   };
 

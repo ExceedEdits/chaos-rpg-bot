@@ -955,13 +955,26 @@ function _createState(guildId) {
     history:      [],
     currentTrack: null,
     textChannel:  null,
+    loop:         null, // null | 'track' | 'queue'
   };
 
   player.on(AudioPlayerStatus.Idle, () => {
-    if (state.currentTrack) {
-      state.history.push(state.currentTrack);
-      if (state.history.length > 20) state.history.shift();
+    const finished = state.currentTrack;
+
+    if (finished) {
+      if (state.loop === 'track') {
+        // Reinsere no início da fila sem adicionar ao histórico
+        state.queue.unshift(finished);
+      } else {
+        state.history.push(finished);
+        if (state.history.length > 20) state.history.shift();
+        if (state.loop === 'queue') {
+          // Reinsere no final da fila para loop contínuo
+          state.queue.push(finished);
+        }
+      }
     }
+
     state.currentTrack = null;
     _playNext(guildId);
   });
@@ -1256,6 +1269,35 @@ _ensureYtDlp()
   .then(() => _runYtDiagnostic())
   .catch(err => console.warn('[Music] Falha ao inicializar yt-dlp:', err.message));
 
+/**
+ * Define o modo de loop do guild.
+ * @param {string} guildId
+ * @param {'track'|'queue'|null} mode
+ */
+function setLoop(guildId, mode) {
+  const state = states.get(guildId);
+  if (!state) return false;
+  state.loop = mode;
+  return true;
+}
+
+/**
+ * Move uma faixa da posição `from` para a posição `to` na fila.
+ * Posições são 1-indexadas (como exibido no /queue).
+ * Retorna a faixa movida ou null em caso de erro.
+ */
+function moveTrack(guildId, from, to) {
+  const state = states.get(guildId);
+  if (!state) return null;
+
+  const len = state.queue.length;
+  if (from < 1 || from > len || to < 1 || to > len || from === to) return null;
+
+  const [track] = state.queue.splice(from - 1, 1);
+  state.queue.splice(to - 1, 0, track);
+  return track;
+}
+
 module.exports = {
   getState,
   destroyState,
@@ -1266,5 +1308,7 @@ module.exports = {
   addManyToQueue,
   restartCurrent,
   goBack,
+  setLoop,
+  moveTrack,
   formatDuration,
 };
