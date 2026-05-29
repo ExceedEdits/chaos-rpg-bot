@@ -632,6 +632,29 @@ function extractVideoId(url) {
  * Tudo pipe local — sem HTTP entre o bot e a CDN, sem timeout.
  */
 /**
+ * Busca título e thumbnail de um vídeo do YouTube via API pública de oEmbed.
+ * Não requer autenticação — funciona mesmo quando o yt-dlp é bloqueado.
+ * Retorna { title, thumbnail } ou null se falhar.
+ */
+async function _ytOEmbed(videoUrl) {
+  try {
+    const data = await _jsonRequest({
+      hostname: 'www.youtube.com',
+      path:     `/oembed?url=${encodeURIComponent(videoUrl)}&format=json`,
+      method:   'GET',
+      headers:  { 'User-Agent': 'Mozilla/5.0' },
+    });
+    return {
+      title:     data.title        ?? null,
+      thumbnail: data.thumbnail_url ?? null,
+      author:    data.author_name   ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Retorna os args de extração adequados para a URL:
  * - YouTube → _ytBotArgs() (cookies + player_client)
  * - SoundCloud / outros → sem args especiais (não precisam de autenticação)
@@ -729,22 +752,61 @@ async function resolveQuery(query, requestedBy) {
   if (extractVideoId(query)) {
     await _ensureYtDlp();
     const wrap = _getWrap();
-    const raw  = await _ytExec(wrap, [
-      query, '--dump-json', '--no-playlist', '--quiet', '--no-warnings',
-    ]);
-    const data = JSON.parse(raw.trim());
-    return {
-      tracks: [{
-        title:       data.title ?? 'Sem título',
-        url:         data.webpage_url ?? query,
-        duration:    formatDuration(data.duration ?? 0),
-        thumbnail:   data.thumbnails?.[data.thumbnails.length - 1]?.url ?? null,
-        requestedBy,
-      }],
-      playlistName: null,
-      truncated:    false,
-      continuation: null,
-    };
+
+    try {
+      const raw  = await _ytExec(wrap, [
+        query, '--dump-json', '--no-playlist', '--quiet', '--no-warnings',
+      ]);
+      const data = JSON.parse(raw.trim());
+      return {
+        tracks: [{
+          title:       data.title ?? 'Sem título',
+          url:         data.webpage_url ?? query,
+          duration:    formatDuration(data.duration ?? 0),
+          thumbnail:   data.thumbnails?.[data.thumbnails.length - 1]?.url ?? null,
+          requestedBy,
+        }],
+        playlistName: null,
+        truncated:    false,
+        continuation: null,
+      };
+    } catch (ytErr) {
+      // ── Fallback: oEmbed → SoundCloud ──────────────────────
+      // Quando o yt-dlp é bloqueado em links do YouTube, busca o título
+      // via oEmbed (API pública, sem autenticação) e pesquisa no SoundCloud.
+      const isBotBlock = /Sign in|not a bot|confirm you/i.test(ytErr.message);
+      if (!isBotBlock) throw ytErr;
+
+      console.warn('[Music] YouTube bloqueou link direto. Buscando título via oEmbed...');
+      const meta = await _ytOEmbed(query);
+
+      if (!meta?.title) {
+        throw new Error(
+          '❌ YouTube bloqueou o acesso e não foi possível obter o título do vídeo.\n' +
+          'Configure `YOUTUBE_COOKIES_B64` no Railway para resolver o bloqueio.'
+        );
+      }
+
+      const searchQuery = meta.author ? `${meta.title} ${meta.author}` : meta.title;
+      console.warn(`[Music] Título obtido: "${meta.title}". Buscando no SoundCloud...`);
+      const sc = await _scSearch(searchQuery);
+
+      // Preserva thumbnail do YouTube se o SoundCloud não tiver
+      if (!sc.thumbnail && meta.thumbnail) sc.thumbnail = meta.thumbnail;
+
+      return {
+        tracks: [{
+          title:       `${sc.title} *(via SoundCloud)*`,
+          url:         sc.url,
+          duration:    formatDuration(sc.duration),
+          thumbnail:   sc.thumbnail ?? null,
+          requestedBy,
+        }],
+        playlistName: null,
+        truncated:    false,
+        continuation: null,
+      };
+    }
   }
 
   // ── Spotify ───────────────────────────────────────────────
