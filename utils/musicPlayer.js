@@ -1215,24 +1215,80 @@ async function loadMoreTracks(continuation, requestedBy) {
   throw new Error('Tipo de continuação desconhecido: ' + type);
 }
 
-// Inicializa yt-dlp e cookies em background ao carregar o módulo
-_ensureYtDlp().catch(err => console.warn('[Music] Falha ao inicializar yt-dlp:', err.message));
+// ── Diagnóstico de startup ────────────────────────────────────
 
-// Log de status do YouTube na inicialização
-(() => {
-  const b64 = process.env.YOUTUBE_COOKIES_B64;
-  if (!b64) {
-    console.warn('[Music] YOUTUBE_COOKIES_B64 não definida — YouTube pode bloquear em IPs de data center.');
-    console.warn('[Music] Estratégia: player_client=ios,android,mweb (sem autenticação).');
+/**
+ * Testa combinações de args do yt-dlp contra um vídeo público do YouTube.
+ * Roda em background após o bot iniciar e loga qual combinação funciona.
+ * Usa um vídeo curto e público (YouTube Help channel) para o teste.
+ */
+async function _runYtDiagnostic() {
+  const TEST_URL  = 'https://www.youtube.com/watch?v=BaW_jenozKc'; // "me at the zoo" — 1º vídeo do YT, sempre público
+  const TEST_ARGS = [
+    '--dump-json', '--no-playlist', '--quiet', '--no-warnings',
+  ];
+
+  await _ensureYtDlp();
+  _ensureYtCookies();
+
+  const wrap = _getWrap();
+
+  // Monta lista de combinações a testar
+  const combos = [];
+
+  if (_cookiesWritten) {
+    combos.push(
+      { label: 'cookies only (sem extractor-args)',                         args: ['--cookies', _COOKIES_PATH] },
+      { label: 'cookies + android',                                         args: ['--cookies', _COOKIES_PATH, '--extractor-args', 'youtube:player_client=android'] },
+      { label: 'cookies + tv_embedded',                                     args: ['--cookies', _COOKIES_PATH, '--extractor-args', 'youtube:player_client=tv_embedded'] },
+      { label: 'cookies + android + player_skip=js',                        args: ['--cookies', _COOKIES_PATH, '--extractor-args', 'youtube:player_client=android;player_skip=js'] },
+      { label: 'cookies + android + no-check-formats',                      args: ['--cookies', _COOKIES_PATH, '--extractor-args', 'youtube:player_client=android', '--no-check-formats'] },
+      { label: 'cookies + android + player_skip=js + no-check-formats',     args: ['--cookies', _COOKIES_PATH, '--extractor-args', 'youtube:player_client=android;player_skip=js', '--no-check-formats'] },
+    );
+  }
+
+  combos.push(
+    { label: 'sem cookies + ios',           args: ['--extractor-args', 'youtube:player_client=ios'] },
+    { label: 'sem cookies + android',       args: ['--extractor-args', 'youtube:player_client=android'] },
+    { label: 'sem cookies + tv_embedded',   args: ['--extractor-args', 'youtube:player_client=tv_embedded'] },
+    { label: 'sem cookies (padrão)',        args: [] },
+  );
+
+  console.log('[Music] ── Diagnóstico yt-dlp/YouTube ──────────────────────');
+  if (_cookiesWritten) {
+    console.log('[Music] Cookies: ✅ carregados e válidos');
   } else {
-    _ensureYtCookies();
-    if (_cookiesWritten) {
-      console.log('[Music] Cookies do YouTube carregados. Estratégia: android,tv_embedded,web + cookies.');
-    } else {
-      console.warn('[Music] YOUTUBE_COOKIES_B64 definida mas falhou ao gravar cookies. Verifique o valor da variável.');
+    console.log('[Music] Cookies: ❌ não configurados (YOUTUBE_COOKIES_B64 ausente ou inválido)');
+  }
+
+  let firstWorking = null;
+
+  for (const combo of combos) {
+    try {
+      const raw  = await wrap.execPromise([TEST_URL, ...TEST_ARGS, ...combo.args]);
+      const data = JSON.parse(raw.trim().split('\n')[0]);
+      console.log(`[Music] ✅  ${combo.label} → "${data.title ?? '?'}"`);
+      if (!firstWorking) firstWorking = combo;
+    } catch (err) {
+      const reason = err.message.split('\n').find(l => l.includes('ERROR:'))?.replace('ERROR:', '').trim()
+                  ?? err.message.slice(0, 80);
+      console.log(`[Music] ❌  ${combo.label} → ${reason}`);
     }
   }
-})();
+
+  console.log('[Music] ─────────────────────────────────────────────────────');
+  if (firstWorking) {
+    console.log(`[Music] 🎯 Combinação recomendada: ${firstWorking.label}`);
+  } else {
+    console.log('[Music] ⚠️  Nenhuma combinação funcionou. YouTube pode estar bloqueando este IP.');
+    console.log('[Music]    Fallback para SoundCloud ativo para buscas por texto/Spotify.');
+  }
+}
+
+// Inicializa yt-dlp e cookies em background ao carregar o módulo
+_ensureYtDlp()
+  .then(() => _runYtDiagnostic())
+  .catch(err => console.warn('[Music] Falha ao inicializar yt-dlp:', err.message));
 
 module.exports = {
   getState,
