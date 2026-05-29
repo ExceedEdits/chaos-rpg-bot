@@ -1223,7 +1223,7 @@ async function loadMoreTracks(continuation, requestedBy) {
  * Usa um vídeo curto e público (YouTube Help channel) para o teste.
  */
 async function _runYtDiagnostic() {
-  const TEST_URL  = 'https://www.youtube.com/watch?v=BaW_jenozKc'; // "me at the zoo" — 1º vídeo do YT, sempre público
+  const TEST_URL  = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'; // Rick Astley — disponível globalmente
   const TEST_ARGS = [
     '--dump-json', '--no-playlist', '--quiet', '--no-warnings',
   ];
