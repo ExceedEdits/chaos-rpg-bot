@@ -111,14 +111,60 @@ const _COOKIES_PATH = path.join(
 );
 let _cookiesWritten = false;
 
+/**
+ * Valida o conteúdo de um arquivo cookies.txt em formato Netscape.
+ * Retorna { valid: true } ou { valid: false, reason: string }.
+ */
+function _validateCookiesContent(content) {
+  // Deve ser formato Netscape HTTP Cookie File
+  if (!content.includes('# Netscape HTTP Cookie File') && !content.includes('# HTTP Cookie File')) {
+    return {
+      valid:  false,
+      reason: 'Formato inválido — o arquivo não começa com "# Netscape HTTP Cookie File".\n' +
+              '  Use a extensão "Get cookies.txt LOCALLY" no Chrome e exporte como Netscape.\n' +
+              '  NÃO use exportação JSON ou de outra extensão.',
+    };
+  }
+  if (!content.includes('youtube.com')) {
+    return {
+      valid:  false,
+      reason: 'Nenhuma entrada de youtube.com encontrada.\n' +
+              '  Exporte os cookies estando na aba youtube.com (não youtube.com/music).',
+    };
+  }
+  // Verifica presença de pelo menos um cookie de autenticação essencial
+  const authCookies = ['SAPISID', 'HSID', 'SSID', '__Secure-1PSID', '__Secure-3PSID', 'SID'];
+  const found = authCookies.filter(c => content.includes(c));
+  if (found.length === 0) {
+    return {
+      valid:  false,
+      reason: 'Cookies de autenticação não encontrados (SAPISID, HSID, SID, etc.).\n' +
+              '  Certifique-se de estar LOGADO no YouTube ao exportar os cookies.\n' +
+              '  Cookies exportados sem login não funcionam para bypass de bot detection.',
+    };
+  }
+  return { valid: true, authFound: found };
+}
+
 function _ensureYtCookies() {
   if (_cookiesWritten) return;
   const b64 = process.env.YOUTUBE_COOKIES_B64;
   if (!b64) return;
   try {
-    fs.writeFileSync(_COOKIES_PATH, Buffer.from(b64, 'base64').toString('utf8'), 'utf8');
+    const content = Buffer.from(b64, 'base64').toString('utf8');
+
+    // Validação de formato e autenticação
+    const check = _validateCookiesContent(content);
+    if (!check.valid) {
+      console.error('[Music] ❌ Cookies do YouTube INVÁLIDOS:', check.reason);
+      return; // não grava — cookies ruins são piores que nenhum cookie
+    }
+
+    // Normaliza quebras de linha (Windows CRLF → LF) para evitar parsing errors
+    const normalized = content.replace(/\r\n/g, '\n');
+    fs.writeFileSync(_COOKIES_PATH, normalized, 'utf8');
     _cookiesWritten = true;
-    console.log('[Music] Cookies do YouTube carregados em', _COOKIES_PATH);
+    console.log(`[Music] ✅ Cookies do YouTube válidos. Cookies de auth encontrados: ${check.authFound.join(', ')}`);
   } catch (err) {
     console.warn('[Music] Falha ao gravar cookies do YouTube:', err.message);
   }
@@ -501,31 +547,68 @@ function formatDuration(sec) {
 
 /**
  * Busca o melhor resultado no YouTube via yt-dlp (ytsearch1:).
- *
- * Usar a mesma ferramenta para buscar e para streamar garante que o vídeo
- * encontrado é sempre streamável — evita o caso de play-dl retornar um
- * URL que yt-dlp não consegue acessar (resultado mudo sem erro).
+ * Se o YouTube bloquear (bot detection), cai automaticamente para SoundCloud.
  */
 async function _ytSearch(query) {
   await _ensureYtDlp();
   const wrap = _getWrap();
-  const raw  = await _ytExec(wrap, [
-    `ytsearch1:${query}`,
+
+  try {
+    const raw  = await _ytExec(wrap, [
+      `ytsearch1:${query}`,
+      '--dump-json',
+      '--no-playlist',
+      '--flat-playlist',
+      '--no-warnings',
+      '--quiet',
+    ]);
+
+    const item = JSON.parse(raw.trim().split('\n')[0]);
+    if (!item?.id) throw new Error(`Nenhum resultado no YouTube para "${query}".`);
+
+    return {
+      url:       `https://www.youtube.com/watch?v=${item.id}`,
+      title:     item.title      ?? 'Sem título',
+      duration:  item.duration   ?? 0,
+      thumbnail: item.thumbnails?.[item.thumbnails.length - 1]?.url ?? null,
+      source:    'youtube',
+    };
+  } catch (ytErr) {
+    const isBotBlock = /Sign in|not a bot|confirm you/i.test(ytErr.message);
+    if (!isBotBlock) throw ytErr;
+
+    // ── Fallback: SoundCloud ──────────────────────────────────
+    // SoundCloud não bloqueia IPs de data center — funciona sem cookies.
+    console.warn(`[Music] YouTube bloqueou busca por "${query}". Tentando SoundCloud...`);
+    return _scSearch(query);
+  }
+}
+
+/**
+ * Busca no SoundCloud via yt-dlp (scsearch1:).
+ * Usado como fallback quando o YouTube bloqueia por bot detection.
+ * SoundCloud não requer autenticação e funciona em IPs de data center.
+ */
+async function _scSearch(query) {
+  await _ensureYtDlp();
+  const wrap = _getWrap();
+  const raw  = await wrap.execPromise([
+    `scsearch1:${query}`,
     '--dump-json',
     '--no-playlist',
-    '--flat-playlist',
     '--no-warnings',
     '--quiet',
   ]);
 
   const item = JSON.parse(raw.trim().split('\n')[0]);
-  if (!item?.id) throw new Error(`Nenhum resultado no YouTube para "${query}".`);
+  if (!item?.webpage_url) throw new Error(`Nenhum resultado no SoundCloud para "${query}".`);
 
   return {
-    url:       `https://www.youtube.com/watch?v=${item.id}`,
-    title:     item.title      ?? 'Sem título',
-    duration:  item.duration   ?? 0,
-    thumbnail: item.thumbnails?.[item.thumbnails.length - 1]?.url ?? null,
+    url:       item.webpage_url,
+    title:     item.title    ?? 'Sem título',
+    duration:  item.duration ?? 0,
+    thumbnail: item.thumbnail ?? null,
+    source:    'soundcloud',
   };
 }
 
@@ -548,6 +631,19 @@ function extractVideoId(url) {
  * Streaming: yt-dlp → ffmpeg → PCM raw (s16le 48 kHz stereo).
  * Tudo pipe local — sem HTTP entre o bot e a CDN, sem timeout.
  */
+/**
+ * Retorna os args de extração adequados para a URL:
+ * - YouTube → _ytBotArgs() (cookies + player_client)
+ * - SoundCloud / outros → sem args especiais (não precisam de autenticação)
+ */
+function _streamArgs(url) {
+  try {
+    const host = new URL(url).hostname;
+    if (host.includes('youtube.com') || host.includes('youtu.be')) return _ytBotArgs();
+  } catch {}
+  return []; // SoundCloud, Bandcamp, etc. não precisam de bot args
+}
+
 async function _getYouTubeAudioStream(url) {
   await _ensureYtDlp();
 
@@ -557,7 +653,7 @@ async function _getYouTubeAudioStream(url) {
     '--no-playlist',
     '-o', '-',
     '--quiet',
-    ..._ytBotArgs(),
+    ..._streamArgs(url),
   ]);
 
   const ffmpeg = spawn(_FFMPEG_BIN, [
