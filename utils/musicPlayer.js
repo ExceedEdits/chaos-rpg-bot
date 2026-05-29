@@ -173,81 +173,47 @@ function _ensureYtCookies() {
 /**
  * Retorna os args do yt-dlp que contornam bot detection.
  *
- * Com cookies válidos → player_client=web (compatível com cookies do browser)
- *                        + youtubetab:skip=authcheck (playlists com cookies)
- * Sem cookies / fallback → player_client=ios,android,mweb (bypass de IPs
- *   de data center sem autenticação — tenta os 3 em sequência)
+ * Resultado do diagnóstico de startup (Railway, 2026-03):
+ *   Com cookies → qualquer config funciona; usar só --cookies é o mais simples.
+ *   Sem cookies → android e tv_embedded funcionam; ios NÃO funciona.
  */
 function _ytBotArgs() {
   _ensureYtCookies();
 
   if (_cookiesWritten) {
-    // player_client: android → tv_embedded → web (compatíveis com cookies).
-    // player_skip=js → não baixa o JavaScript do player do YouTube para
-    //   descriptografar o parâmetro "n". Usa a implementação interna do
-    //   yt-dlp, que é atualizada a cada release. Evita o erro
-    //   "Requested format is not available" causado por falha na descriptografia.
-    // IMPORTANTE: skip=dash NÃO deve ser usado — ele desativa o caminho
-    //   de autenticação que aplica os cookies, causando "Sign in" errors.
-    return [
-      '--extractor-args', 'youtube:player_client=android,tv_embedded,web;player_skip=js',
-      '--extractor-args', 'youtubetab:skip=authcheck',
-      '--cookies', _COOKIES_PATH,
-      '--no-check-formats',
-    ];
+    // Cookies sozinhos já bypassam o bot detection — nenhum extractor-arg extra.
+    return ['--cookies', _COOKIES_PATH];
   }
 
-  // Sem cookies: tenta ios → android → mweb.
-  // ATENÇÃO: IPs de data center (Railway) são bloqueados pelo YouTube sem cookies.
-  return [
-    '--extractor-args', 'youtube:player_client=ios,android,mweb;player_skip=js',
-    '--no-check-formats',
-  ];
+  // Sem cookies: android funciona em IPs de data center; ios não.
+  return ['--extractor-args', 'youtube:player_client=android,tv_embedded'];
 }
 
 /**
  * Executa o yt-dlp com retry automático em caso de falha.
  *
  * Com cookies:
- *   1ª tentativa: android,tv_embedded,web + cookies
- *   Se falhar com bot/format error → tenta cada client individualmente
- *   com os mesmos cookies antes de desistir.
+ *   1ª tentativa: --cookies only
+ *   Se falhar → retry adicionando player_client=android explicitamente
  *
  * Sem cookies:
- *   1ª tentativa: ios,android,mweb
- *   Sem retry (IP bloqueado sem auth — não há o que tentar).
+ *   1ª tentativa: android,tv_embedded
+ *   Se falhar → retry com padrão do yt-dlp (sem extractor-args)
  */
 async function _ytExec(wrap, args) {
   try {
     return await wrap.execPromise([...args, ..._ytBotArgs()]);
   } catch (err) {
     const isRecoverable = /Sign in|not a bot|confirm you|Failed to extract any player|Requested format is not available/i.test(err.message);
+    if (!isRecoverable) throw err;
 
-    // Sem cookies ou erro não-recuperável → propaga
-    if (!_cookiesWritten || !isRecoverable) throw err;
+    // Retry com client explícito
+    const retryArgs = _cookiesWritten
+      ? ['--cookies', _COOKIES_PATH, '--extractor-args', 'youtube:player_client=android']
+      : ['--extractor-args', 'youtube:player_client=tv_embedded'];
 
-    // Com cookies: tenta clients individualmente na ordem de confiabilidade
-    const fallbackClients = ['android', 'tv_embedded', 'web', 'mweb'];
-    let lastErr = err;
-
-    for (const client of fallbackClients) {
-      try {
-        console.warn(`[Music] Falha com client primário. Tentando player_client=${client} + cookies...`);
-        return await wrap.execPromise([
-          ...args,
-          '--extractor-args', `youtube:player_client=${client};player_skip=js`,
-          '--extractor-args', 'youtubetab:skip=authcheck',
-          '--cookies', _COOKIES_PATH,
-          '--no-check-formats',
-        ]);
-      } catch (e) {
-        const errLine = e.message.split('\n').find(l => l.includes('ERROR:')) ?? e.message.slice(0, 120);
-        console.warn(`[Music] player_client=${client} falhou: ${errLine}`);
-        lastErr = e;
-      }
-    }
-
-    throw lastErr;
+    console.warn('[Music] Retry yt-dlp com args alternativos...');
+    return wrap.execPromise([...args, ...retryArgs]);
   }
 }
 
